@@ -22,7 +22,14 @@ STUDENT_DB_DIRECTORY = os.path.join(DATA_DIR, "students")
 STUDENT_BACKUP_DIRECTORY = os.path.join(STUDENT_DB_DIRECTORY, "backups")
 DB_FILE = os.path.join(DATA_DIR, "submissions.json")
 FORMS_DB_FILE = os.path.join(DATA_DIR, "forms.json")
-API_SECRET_KEY = os.getenv("API_KEY", "MySuperSecretKey123!") # run_analysis.py 와의 통신용
+
+# API_SECRET_KEY는 run_analysis.py 와의 통신에만 사용됩니다.
+API_SECRET_KEY = os.getenv("API_KEY") 
+
+# 서버 시작 전, 필수 환경 변수가 설정되었는지 확인
+if not API_SECRET_KEY:
+    raise ValueError("필수 환경 변수가 설정되지 않았습니다: API_KEY")
+
 ADMIN_PASSWORD = "dusrntlf"
 KST = pytz.timezone('Asia/Seoul')
 
@@ -46,20 +53,21 @@ def is_admin_apikey():
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    password = request.json.get('password')
-    if password == ADMIN_PASSWORD:
+    """ 비밀번호를 받아 관리자 세션을 생성합니다. """
+    if request.json.get('password') == ADMIN_PASSWORD:
         session['is_admin'] = True
         return jsonify({"message": "로그인 성공"})
-    else:
-        return jsonify({"error": "비밀번호가 틀렸습니다."}), 401
+    return jsonify({"error": "비밀번호가 틀렸습니다."}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
+    """ 관리자 세션을 파기합니다. """
     session.pop('is_admin', None)
     return jsonify({"message": "로그아웃 성공"})
 
 @app.route('/api/auth-status', methods=['GET'])
 def auth_status():
+    """ 현재 로그인 상태를 반환합니다. """
     return jsonify({"is_admin": is_admin_session()})
 
 # --- API 엔드포인트 ---
@@ -121,7 +129,7 @@ def submit_data():
 
 @app.route('/pending-data', methods=['GET'])
 def get_pending_data():
-    if not is_admin_apikey(): return jsonify({"error": "Unauthorized"}), 401 # API 키로만 접근 가능
+    if not is_admin_apikey(): return jsonify({"error": "권한이 없습니다."}), 401
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): db_data = []
@@ -129,7 +137,7 @@ def get_pending_data():
 
 @app.route('/mark-processed', methods=['POST'])
 def mark_processed():
-    if not is_admin_apikey(): return jsonify({"error": "Unauthorized"}), 401 # API 키로만 접근 가능
+    if not is_admin_apikey(): return jsonify({"error": "권한이 없습니다."}), 401
     processed_ids = request.get_json().get('ids', []);
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
@@ -142,24 +150,23 @@ def mark_processed():
 
 @app.route('/api/calendar/events', methods=['GET'])
 def get_calendar_events():
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     start_str, end_str = request.args.get('start'), request.args.get('end'); events_to_show = defaultdict(set)
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms_info = {form['id']: form.get('name', 'N/A') for form in json.load(f)}
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             try:
-                submitted_date = datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')
-                if start_str <= submitted_date < end_str and item.get('form_id'):
-                    events_to_show[submitted_date].add(item.get('form_id'))
-            except (ValueError, TypeError): continue
-    except (FileNotFoundError, json.JSONDecodeError): pass
+                if start_str <= datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d') < end_str:
+                    if item.get('form_id'): events_to_show[datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')].add(item.get('form_id'))
+            except: continue
+    except: pass
     calendar_events = [{"title": forms_info.get(form_id, "알 수 없는 수업"), "start": date_str, "extendedProps": {"formId": form_id}} for date_str, form_ids in events_to_show.items() for form_id in form_ids]
     return jsonify(calendar_events)
 
 @app.route('/api/data/by-date-form/<string:date_str>/<string:form_id>', methods=['GET'])
 def get_data_by_date_and_form(date_str, form_id):
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     latest_submissions = {}
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
@@ -169,26 +176,26 @@ def get_data_by_date_and_form(date_str, form_id):
                     student_key = (item.get('student_name'), item.get('phone_suffix'))
                     if student_key not in latest_submissions or item.get('submitted_at') > latest_submissions[student_key].get('submitted_at'):
                         latest_submissions[student_key] = item
-            except (ValueError, TypeError): continue
-    except (FileNotFoundError, json.JSONDecodeError): pass
+            except: continue
+    except: pass
     return jsonify(list(latest_submissions.values()))
 
 @app.route('/api/submission/<int:submission_id>', methods=['GET'])
 def get_submission_details(submission_id):
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             if item.get('id') == submission_id: return jsonify(item)
-    except (FileNotFoundError, json.JSONDecodeError): pass
+    except: pass
     return jsonify({"error": "해당 ID의 데이터를 찾을 수 없습니다."}), 404
 
 @app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
 def delete_submission(submission_id):
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError): return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
+    except: return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
     initial_length = len(db_data)
     db_data_after_delete = [item for item in db_data if item.get('id') != submission_id]
     if len(db_data_after_delete) == initial_length: return jsonify({"error": "해당 ID의 제출 기록을 찾을 수 없습니다."}), 404
@@ -197,10 +204,10 @@ def delete_submission(submission_id):
     
 @app.route('/api/reprocess/<int:submission_id>', methods=['POST'])
 def request_reprocessing(submission_id):
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError): return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
+    except: return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
     found = False
     for item in db_data:
         if item.get('id') == submission_id: item['status'] = 'pending'; item.pop('processed_at', None); found = True; break
@@ -210,19 +217,19 @@ def request_reprocessing(submission_id):
 
 @app.route('/api/students', methods=['GET'])
 def get_all_students():
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     students = set()
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             if all(k in item for k in ['student_name', 'phone_suffix', 'subject']):
                 students.add(f"{item['student_name']}({item['phone_suffix']})_{item['subject']}")
-    except (FileNotFoundError, json.JSONDecodeError): pass
+    except: pass
     return jsonify(sorted(list(students)))
 
 @app.route('/api/full-recalculate', methods=['POST'])
 def full_recalculate():
-    if not is_admin_session(): return jsonify({"error": "Unauthorized"}), 401
+    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     student_id = request.get_json().get('student_id');
     if not student_id: return jsonify({"error": "학생 ID가 필요합니다."}), 400
     s_name, s_phone, s_subj = (re.match(r"(.+?)\((\d{4})\)_(.+)", student_id) or (None, None, None)).groups()
@@ -237,7 +244,7 @@ def full_recalculate():
             if (item.get('student_name') == s_name and item.get('phone_suffix') == s_phone and item.get('subject') == s_subj):
                 item['status'] = 'pending'; item.pop('processed_at', None); recalculated_count += 1
         with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
-    except (FileNotFoundError, json.JSONDecodeError): pass
+    except: pass
     return jsonify({"message": f"'{student_id}' 학생의 모든 데이터가 리셋되었습니다. 총 {recalculated_count}개의 기록이 재처리 대기 상태로 변경되었습니다."})
 
 if __name__ == '__main__':
