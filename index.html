@@ -23,7 +23,6 @@
         .error { background-color: #f8d7da; color: #721c24; }
         #admin-panel { display: none; border: 2px dashed #007bff; padding: 1.5em; border-radius: 8px; margin-top: 2em; }
         .form-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5em; border-bottom: 1px solid #eee; }
-        .processed-list-item { background-color: #f8f9fa; border: 1px solid #dee2e6; margin-top: 5px; border-radius: 4px; }
         .admin-controls { text-align: right; margin-bottom: 1em; }
         .input-group { display: flex; gap: 10px; }
         #assistant-panel { display: block; }
@@ -33,12 +32,10 @@
         .answer-row select.is_correct { flex: 0 0 120px; }
         .answer-row input.failed_edge_id { flex: 1 1 auto; }
         #calendar { max-width: 1100px; margin: 2em auto; }
-        .fc-daygrid-day.fc-day-has-event { background-color: #e9f5ff; cursor: pointer; }
+        .fc-event { cursor: pointer; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; }
         .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
-        .form-summary-item { cursor: pointer; padding: 10px; margin: 5px 0; background-color: #f2f2f2; border-radius: 5px; }
-        .form-summary-item:hover { background-color: #e2e2e2; }
         #student-details-container { margin-top: 20px; max-height: 400px; overflow-y: auto; }
         #student-details-container table { width: 100%; border-collapse: collapse; }
         #student-details-container th, #student-details-container td { border: 1px solid #ddd; padding: 8px; text-align: left; }
@@ -74,39 +71,64 @@
     <div id="detailsModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span><h2 id="modalDateTitle"></h2>
-            <div id="form-summary-container"></div><div id="student-details-container"></div>
+            <div id="student-details-container"></div>
         </div>
     </div>
 
     <script>
-        const assistantPanel=document.getElementById('assistant-panel'), adminPanel=document.getElementById('admin-panel'), toggleAdminBtn=document.getElementById('toggle-admin-mode'), formSelect=document.getElementById('form-select'), currentFormsContainer=document.getElementById('current-forms-container'), modal=document.getElementById('detailsModal'), modalDateTitle=document.getElementById('modalDateTitle'), formSummaryContainer=document.getElementById('form-summary-container'), studentDetailsContainer=document.getElementById('student-details-container'), closeModal=document.getElementsByClassName("close")[0];
-        let forms=[], calendar;
+        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), currentFormsContainer = document.getElementById('current-forms-container'), modal = document.getElementById('detailsModal'), modalDateTitle = document.getElementById('modalDateTitle'), studentDetailsContainer = document.getElementById('student-details-container'), closeModal = document.getElementsByClassName("close")[0];
+        let forms = [], calendar;
+
         document.addEventListener('DOMContentLoaded', function() {
             calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
-                initialView: 'dayGridMonth', locale: 'ko', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth' },
+                initialView: 'dayGridMonth', locale: 'ko',
+                headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth' },
                 events: (fetchInfo, successCallback, failureCallback) => {
                     const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { successCallback([]); return; }
                     fetch(`/api/calendar/events?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`, { headers: { 'X-API-KEY': apiKey } })
                         .then(res => res.json()).then(events => successCallback(events)).catch(err => { alert('달력 데이터 로딩 실패'); failureCallback(err); });
                 },
-                dateClick: (info) => {
-                    const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey || !info.dayEl.classList.contains('fc-day-has-event')) return;
-                    modalDateTitle.textContent = `${info.dateStr} 제출 현황`; studentDetailsContainer.innerHTML = '';
-                    fetch(`/api/data/by-date/${info.dateStr}`, { headers: { 'X-API-KEY': apiKey } }).then(res => res.json()).then(summary => {
-                        formSummaryContainer.innerHTML = ''; if (Object.keys(summary).length === 0) { formSummaryContainer.textContent = "데이터 없음"; }
-                        for (const formId in summary) {
-                            const item = summary[formId]; const el = document.createElement('div'); el.className = 'form-summary-item';
-                            el.textContent = `${item.form_name} (${item.count}건)`; el.dataset.formId = formId; el.dataset.dateStr = info.dateStr; formSummaryContainer.appendChild(el);
-                        }
-                        modal.style.display = "block";
-                    });
+                // [변경] dateClick 대신 eventClick 사용
+                eventClick: function(info) {
+                    info.jsEvent.preventDefault(); // 기본 동작 방지
+                    const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) return;
+
+                    const formId = info.event.extendedProps.formId;
+                    const dateStr = info.event.start.toISOString().split('T')[0];
+                    const formName = info.event.title;
+
+                    modalDateTitle.textContent = `${dateStr} - ${formName} 제출 목록`;
+                    studentDetailsContainer.innerHTML = '<h4>로딩 중...</h4>';
+                    modal.style.display = "block";
+
+                    fetch(`/api/data/by-date-form/${dateStr}/${formId}`, { headers: { 'X-API-KEY': apiKey } })
+                        .then(res => res.json())
+                        .then(details => {
+                            renderStudentDetails(details);
+                        });
                 }
             });
         });
+
+        function renderStudentDetails(details) {
+            studentDetailsContainer.innerHTML = '';
+            if (details.length === 0) { studentDetailsContainer.textContent = '해당하는 데이터가 없습니다.'; return; }
+            const table = document.createElement('table');
+            table.innerHTML = `<thead><tr><th>ID</th><th>학생명</th><th>상태</th><th>제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`;
+            const tbody = table.querySelector('tbody');
+            details.forEach(item => {
+                const row = tbody.insertRow();
+                const statusText = item.status === 'processed' ? `완료(${new Date(item.processed_at).toLocaleTimeString()})` : '대기';
+                row.innerHTML = `<td>${item.id}</td><td>${item.student_name}</td><td>${statusText}</td><td>${new Date(item.submitted_at).toLocaleTimeString()}</td><td><button class="reprocess-btn" data-id="${item.id}" ${item.status === 'pending' ? 'disabled' : ''}>재처리</button></td>`;
+            });
+            studentDetailsContainer.appendChild(table);
+        }
+
         async function loadFormsFromServer() { try { const res = await fetch('/api/forms'); if (!res.ok) throw new Error('Failed to load forms.'); forms = await res.json(); renderAll(); } catch (error) { console.error(error); alert(error.message); } }
         function renderAssistantView() { formSelect.innerHTML = '<option value="">-- 양식 선택 --</option>'; forms.forEach(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; formSelect.appendChild(o); }); }
         function renderAdminView() { currentFormsContainer.innerHTML = ''; if (forms.length === 0) { currentFormsContainer.textContent = "저장된 양식 없음"; } else { forms.forEach(f => { const i = document.createElement('div'); i.className = 'form-list-item'; i.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, ${f.startNumber}~${f.endNumber}번)</span><button class="delete-btn" data-id="${f.id}">삭제</button>`; currentFormsContainer.appendChild(i); }); } }
         function renderAll() { renderAssistantView(); renderAdminView(); }
+        
         toggleAdminBtn.addEventListener('click', () => {
             if (adminPanel.style.display === 'block') { sessionStorage.removeItem('tempApiKey'); adminPanel.style.display = 'none'; assistantPanel.style.display = 'block'; toggleAdminBtn.textContent = '관리자 모드'; } else {
                 const apiKey = prompt("관리자 API 키를 입력하세요:"); if (!apiKey) return;
@@ -114,14 +136,15 @@
                 if (calendar) { calendar.render(); calendar.refetchEvents(); }
             }
         });
+        
         async function handleAdminAction(url, method, apiKey, body) { try { const opts = { method, headers: { 'X-API-KEY': apiKey } }; if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); } const res = await fetch(url, opts); const result = await res.json(); if (!res.ok) throw new Error(result.error || '작업 실패'); alert(result.message); return true; } catch (error) { console.error(error); alert(error.message); return false; } }
-        document.getElementById('add-form-btn').addEventListener('click', async () => { const n=document.getElementById('new-form-name').value.trim(), s=document.getElementById('new-form-subject').value.trim(), st=parseInt(document.getElementById('new-form-start').value, 10), e=parseInt(document.getElementById('new-form-end').value, 10); if (!n || !s || !st || !e || st < 1 || e < st) { alert('모든 항목을 올바르게 입력해주세요.'); return; } const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } const nf = { id: `form_${Date.now()}`, name: n, subject: s, startNumber: st, endNumber: e }; if (await handleAdminAction('/api/forms', 'POST', apiKey, nf)) { document.getElementById('new-form-name').value = ''; document.getElementById('new-form-subject').value = ''; document.getElementById('new-form-start').value = ''; document.getElementById('new-form-end').value = ''; loadFormsFromServer(); } });
-        currentFormsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('delete-btn')) { const formId = e.target.getAttribute('data-id'); if (confirm('정말로 이 양식을 삭제하시겠습니까?')) { const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE', apiKey)) { loadFormsFromServer(); } } } });
-        formSummaryContainer.addEventListener('click', (e) => { const target = e.target.closest('.form-summary-item'); if (!target) return; const apiKey = sessionStorage.getItem('tempApiKey'), dateStr = target.dataset.dateStr, formId = target.dataset.formId; fetch(`/api/data/by-date-form/${dateStr}/${formId}`, { headers: { 'X-API-KEY': apiKey } }).then(res => res.json()).then(details => { studentDetailsContainer.innerHTML = '<h4>상세 제출 목록 <button class="reprocess-all-btn" style="font-size:0.8em">전체 재처리 요청</button></h4>'; const table = document.createElement('table'); table.innerHTML = `<thead><tr><th>ID</th><th>학생명</th><th>답안 수</th><th>제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`; const tbody = table.querySelector('tbody'); details.forEach(item => { const row = tbody.insertRow(); row.innerHTML = `<td>${item.id}</td><td>${item.student_name}</td><td>${item.answers.length}</td><td>${new Date(item.submitted_at).toLocaleTimeString()}</td><td><button class="reprocess-btn" data-id="${item.id}">재처리</button></td>`; }); studentDetailsContainer.appendChild(table); }); });
-        studentDetailsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('reprocess-btn')) { const submissionId = e.target.getAttribute('data-id'); const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST', apiKey)) { alert('재처리 요청 완료. 목록을 다시 열어 확인하세요.'); } } } });
+        document.getElementById('add-form-btn').addEventListener('click', async () => { const n=document.getElementById('new-form-name').value.trim(), s=document.getElementById('new-form-subject').value.trim(), st=parseInt(document.getElementById('new-form-start').value, 10), e=parseInt(document.getElementById('new-form-end').value, 10); if (!n || !s || !st || !e || st < 1 || e < st) { alert('모든 항목을 올바르게 입력해주세요.'); return; } const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } const nf = { id: `form_${Date.now()}`, name: n, subject: s, startNumber: st, endNumber: e }; if (await handleAdminAction('/api/forms', 'POST', apiKey, nf)) { document.getElementById('new-form-name').value = ''; document.getElementById('new-form-subject').value = ''; document.getElementById('new-form-start').value = ''; document.getElementById('new-form-end').value = ''; loadFormsFromServer(); calendar.refetchEvents(); } });
+        currentFormsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('delete-btn')) { const formId = e.target.getAttribute('data-id'); if (confirm('정말로 이 양식을 삭제하시겠습니까?')) { const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE', apiKey)) { loadFormsFromServer(); calendar.refetchEvents(); } } } });
+        studentDetailsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('reprocess-btn')) { const submissionId = e.target.getAttribute('data-id'); const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST', apiKey)) { e.target.textContent = '요청됨'; e.target.disabled = true; } } } });
         closeModal.onclick = () => { modal.style.display = "none"; }; window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
         formSelect.addEventListener('change', function() { const formId=this.value, mainContent=document.getElementById('main-content'), answersContainer=document.getElementById('answers-container'), subjectInput=document.getElementById('subject'); if (!formId) { mainContent.style.display='none'; return; } const selectedForm=forms.find(f => f.id === formId); if (selectedForm) { subjectInput.value=selectedForm.subject; answersContainer.innerHTML=''; for (let i=selectedForm.startNumber; i <= selectedForm.endNumber; i++) { const newRow=document.createElement('div'); newRow.className='answer-row'; newRow.innerHTML=`<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`; answersContainer.appendChild(newRow); } mainContent.style.display='block'; } });
         document.getElementById('submission-form').addEventListener('submit', function(e) { e.preventDefault(); const formId=document.getElementById('form-select').value; const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] }; document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } }); fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); }); });
+        
         window.onload = loadFormsFromServer;
     </script>
 </body>
