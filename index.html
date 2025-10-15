@@ -13,19 +13,18 @@
         input, select { width: 100%; padding: 0.8em; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 0.8em 1.5em; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; }
         button:hover { background-color: #0056b3; }
-        .delete-btn { background-color: #dc3545; font-size: 0.8em; padding: 0.4em 0.8em; }
+        .delete-btn, .reprocess-btn { font-size: 0.8em; padding: 0.4em 0.8em; }
+        .delete-btn { background-color: #dc3545; }
+        .reprocess-btn { background-color: #ffc107; color: black; }
         hr { border: 0; height: 1px; background-color: #eee; margin: 2em 0; }
         #message { margin-top: 1em; padding: 1em; border-radius: 5px; display: none; text-align: center; font-weight: bold; }
         .success { background-color: #d4edda; color: #155724; }
         .error { background-color: #f8d7da; color: #721c24; }
-        
-        /* 관리자 모드 스타일 */
         #admin-panel { display: none; border: 2px dashed #007bff; padding: 1.5em; border-radius: 8px; margin-top: 2em; }
         .form-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5em; border-bottom: 1px solid #eee; }
+        .processed-list-item { background-color: #f8f9fa; border: 1px solid #dee2e6; margin-top: 5px; border-radius: 4px; }
         .admin-controls { text-align: right; margin-bottom: 1em; }
-        .input-group { display: flex; gap: 10px; } /* [추가] 시작/끝 번호 입력을 위한 스타일 */
-
-        /* 조교 모드 (일반) 스타일 */
+        .input-group { display: flex; gap: 10px; }
         #assistant-panel { display: block; }
         #main-content { display: none; }
         #answers-container .answer-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
@@ -36,223 +35,147 @@
 </head>
 <body>
     <div class="container">
-        <div class="admin-controls">
-            <button id="toggle-admin-mode">관리자 모드</button>
-        </div>
-
-        <!-- 조교가 사용하는 일반 패널 -->
+        <div class="admin-controls"><button id="toggle-admin-mode">관리자 모드</button></div>
         <div id="assistant-panel">
             <h1>학생 답안 제출</h1>
-            <div class="form-group">
-                <label for="form-select">평가 양식 선택:</label>
-                <select id="form-select">
-                    <option value="">-- 먼저 양식을 선택하세요 --</option>
-                </select>
-            </div>
+            <div class="form-group"><label for="form-select">평가 양식 선택:</label><select id="form-select"><option value="">-- 먼저 양식을 선택하세요 --</option></select></div>
             <hr>
             <div id="main-content">
                 <form id="submission-form">
-                    <!-- 학생 정보 입력 부분 -->
                     <div class="form-group"><label for="student_name">학생 이름:</label><input type="text" id="student_name" required></div>
                     <div class="form-group"><label for="phone_suffix">전화번호 뒤 4자리:</label><input type="text" id="phone_suffix" pattern="\d{4}" required></div>
                     <div class="form-group"><label for="subject">과목:</label><input type="text" id="subject" required readonly style="background-color: #e9ecef;"></div>
-                    <h2>답안 입력</h2>
-                    <div id="answers-container"></div>
-                    <hr>
-                    <button type="submit">제출하기</button>
+                    <h2>답안 입력</h2><div id="answers-container"></div><hr><button type="submit">제출하기</button>
                 </form>
             </div>
         </div>
-
-        <!-- 관리자가 사용하는 숨겨진 패널 -->
         <div id="admin-panel">
             <h2>관리자 모드: 평가 양식 관리</h2>
-            <div id="form-list">
-                <h3>현재 양식 목록</h3>
-                <div id="current-forms-container"></div>
-            </div>
-            <hr>
-            <h3>새 양식 추가</h3>
-            <div class="form-group"><label for="new-form-name">양식 이름:</label><input type="text" id="new-form-name" placeholder="예: 수학(상) 1학기 중간고사"></div>
-            <div class="form-group"><label for="new-form-subject">과목명:</label><input type="text" id="new-form-subject" placeholder="예: 수학(상)"></div>
-            <!-- [변경] '문제 개수'가 '시작 번호'와 '끝 번호'로 변경됨 -->
-            <div class="form-group">
-                <label>문제 번호 범위:</label>
-                <div class="input-group">
-                    <input type="number" id="new-form-start" min="1" placeholder="시작 번호">
-                    <input type="number" id="new-form-end" min="1" placeholder="끝 번호">
-                </div>
-            </div>
+            <div id="form-list"><h3>현재 양식 목록</h3><div id="current-forms-container"></div></div><hr><h3>새 양식 추가</h3>
+            <div class="form-group"><label for="new-form-name">양식 이름:</label><input type="text" id="new-form-name"></div>
+            <div class="form-group"><label for="new-form-subject">과목명:</label><input type="text" id="new-form-subject"></div>
+            <div class="form-group"><label>문제 번호 범위:</label><div class="input-group"><input type="number" id="new-form-start" min="1" placeholder="시작"><input type="number" id="new-form-end" min="1" placeholder="끝"></div></div>
             <button id="add-form-btn">새 양식 저장하기</button>
+            <hr>
+            <h2>오늘 처리된 데이터 재처리</h2>
+            <div id="reprocess-list">
+                <h3>오늘 처리 완료 목록 <button id="reload-processed-btn" style="font-size: 0.8em;">새로고침</button></h3>
+                <div id="processed-today-container"></div>
+            </div>
         </div>
-
         <div id="message"></div>
     </div>
 
     <script>
-        const assistantPanel = document.getElementById('assistant-panel');
-        const adminPanel = document.getElementById('admin-panel');
-        const toggleAdminBtn = document.getElementById('toggle-admin-mode');
-        const formSelect = document.getElementById('form-select');
-        const currentFormsContainer = document.getElementById('current-forms-container');
+        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), currentFormsContainer = document.getElementById('current-forms-container'), processedTodayContainer = document.getElementById('processed-today-container');
         let forms = [];
 
-        function loadForms() {
-            const storedForms = localStorage.getItem('predefinedForms');
-            if (storedForms) {
-                forms = JSON.parse(storedForms);
-            } else {
-                // [변경] 예시 데이터 구조를 startNumber, endNumber로 변경
-                forms = [
-                    { id: "example1", name: "수학(상) 중간고사 (예시)", subject: "수학(상)", startNumber: 1, endNumber: 20 },
-                    { id: "example2", name: "물리학1 퀴즈 (예시)", subject: "물리학1", startNumber: 5, endNumber: 10 }
-                ];
-            }
-        }
-
-        function saveForms() {
-            localStorage.setItem('predefinedForms', JSON.stringify(forms));
-        }
+        async function loadFormsFromServer() { try { const response = await fetch('/api/forms'); if (!response.ok) throw new Error('Failed to load forms.'); forms = await response.json(); renderAll(); } catch (error) { console.error(error); alert(error.message); } }
+        async function loadProcessedToday(apiKey) { try { const response = await fetch('/api/processed-today', { headers: { 'X-API-KEY': apiKey } }); const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Failed to load processed list.'); renderProcessedList(result); } catch (error) { console.error(error); alert(error.message); } }
         
-        function renderAssistantView() {
-            formSelect.innerHTML = '<option value="">-- 먼저 양식을 선택하세요 --</option>';
-            forms.forEach(form => {
-                const option = document.createElement('option');
-                option.value = form.id;
-                option.textContent = form.name;
-                formSelect.appendChild(option);
-            });
-        }
-        
-        function renderAdminView() {
-            currentFormsContainer.innerHTML = '';
-            if (forms.length === 0) {
-                currentFormsContainer.textContent = "저장된 양식이 없습니다.";
-            } else {
-                forms.forEach(form => {
-                    const item = document.createElement('div');
-                    item.className = 'form-list-item';
-                    // [변경] 표시되는 텍스트를 "X번 ~ Y번" 형식으로 변경
-                    item.innerHTML = `
-                        <span><strong>${form.name}</strong> (${form.subject}, ${form.startNumber}번 ~ ${form.endNumber}번)</span>
-                        <button class="delete-btn" data-id="${form.id}">삭제</button>
-                    `;
-                    currentFormsContainer.appendChild(item);
+        function renderAssistantView() { formSelect.innerHTML = '<option value="">-- 먼저 양식을 선택하세요 --</option>'; forms.forEach(form => { const option = document.createElement('option'); option.value = form.id; option.textContent = form.name; formSelect.appendChild(option); }); }
+        function renderAdminView() { currentFormsContainer.innerHTML = ''; if (forms.length === 0) { currentFormsContainer.textContent = "저장된 양식이 없습니다."; } else { forms.forEach(form => { const item = document.createElement('div'); item.className = 'form-list-item'; item.innerHTML = `<span><strong>${form.name}</strong> (${form.subject}, ${form.startNumber}~${form.endNumber}번)</span><button class="delete-btn" data-id="${form.id}">삭제</button>`; currentFormsContainer.appendChild(item); }); } }
+        function renderProcessedList(processedItems) {
+            processedTodayContainer.innerHTML = '';
+            if (processedItems.length === 0) { processedTodayContainer.textContent = "오늘 처리 완료된 데이터가 없습니다."; } else {
+                processedItems.forEach(item => {
+                    const el = document.createElement('div'); el.className = 'form-list-item processed-list-item';
+                    const studentId = `${item.student_name}(${item.phone_suffix})_${item.subject}`; const processedTime = new Date(item.processed_at).toLocaleTimeString('ko-KR');
+                    el.innerHTML = `<span><strong>${studentId}</strong> (ID: ${item.id}, 처리: ${processedTime})</span><button class="reprocess-btn" data-id="${item.id}">재처리 요청</button>`;
+                    processedTodayContainer.appendChild(el);
                 });
             }
         }
+        function renderAll() { renderAssistantView(); renderAdminView(); }
+        
+        toggleAdminBtn.addEventListener('click', () => {
+            if (adminPanel.style.display === 'block') { sessionStorage.removeItem('tempApiKey'); adminPanel.style.display = 'none'; assistantPanel.style.display = 'block'; toggleAdminBtn.textContent = '관리자 모드'; } else {
+                const apiKey = prompt("관리자 API 키를 입력하세요:"); if (!apiKey) return;
+                sessionStorage.setItem('tempApiKey', apiKey); loadProcessedToday(apiKey);
+                adminPanel.style.display = 'block'; assistantPanel.style.display = 'none'; toggleAdminBtn.textContent = '조교 모드로 돌아가기';
+            }
+        });
+        
+        document.getElementById('reload-processed-btn').addEventListener('click', () => { const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키 정보가 없습니다. 관리자 모드를 다시 열어주세요.'); return; } loadProcessedToday(apiKey); });
 
-        function renderAll() {
-            renderAssistantView();
-            renderAdminView();
+        async function handleAdminAction(url, method, apiKey, body) {
+            try {
+                const options = { method, headers: { 'X-API-KEY': apiKey } };
+                if (body) { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(body); }
+                const response = await fetch(url, options);
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || '작업에 실패했습니다.');
+                alert(result.message);
+                return true;
+            } catch (error) { console.error(error); alert(error.message); return false; }
         }
 
-        toggleAdminBtn.addEventListener('click', () => {
-            if (adminPanel.style.display === 'block') {
-                adminPanel.style.display = 'none'; assistantPanel.style.display = 'block';
-                toggleAdminBtn.textContent = '관리자 모드';
-            } else {
-                adminPanel.style.display = 'block'; assistantPanel.style.display = 'none';
-                toggleAdminBtn.textContent = '조교 모드로 돌아가기';
+        document.getElementById('add-form-btn').addEventListener('click', async () => {
+            const name = document.getElementById('new-form-name').value.trim(), subject = document.getElementById('new-form-subject').value.trim(), start = parseInt(document.getElementById('new-form-start').value, 10), end = parseInt(document.getElementById('new-form-end').value, 10);
+            if (!name || !subject || !start || !end || start < 1 || end < start) { alert('모든 항목을 올바르게 입력해주세요.'); return; }
+            const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키 정보가 없습니다.'); return; }
+            const newForm = { id: `form_${Date.now()}`, name, subject, startNumber: start, endNumber: end };
+            if (await handleAdminAction('/api/forms', 'POST', apiKey, newForm)) {
+                document.getElementById('new-form-name').value = ''; document.getElementById('new-form-subject').value = ''; document.getElementById('new-form-start').value = ''; document.getElementById('new-form-end').value = '';
+                loadFormsFromServer();
             }
         });
 
-        document.getElementById('add-form-btn').addEventListener('click', () => {
-            const name = document.getElementById('new-form-name').value.trim();
-            const subject = document.getElementById('new-form-subject').value.trim();
-            // [변경] 시작 번호와 끝 번호를 읽어옴
-            const start = parseInt(document.getElementById('new-form-start').value, 10);
-            const end = parseInt(document.getElementById('new-form-end').value, 10);
-
-            // [변경] 유효성 검사 강화
-            if (!name || !subject || !start || !end || start < 1 || end < start) {
-                alert('모든 항목을 올바르게 입력해주세요. 끝 번호는 시작 번호보다 크거나 같아야 합니다.');
-                return;
-            }
-            
-            // [변경] 저장하는 데이터 구조를 startNumber, endNumber로 변경
-            const newForm = {
-                id: `form_${Date.now()}`,
-                name: name,
-                subject: subject,
-                startNumber: start,
-                endNumber: end
-            };
-            forms.push(newForm);
-            saveForms();
-            renderAll();
-            
-            document.getElementById('new-form-name').value = '';
-            document.getElementById('new-form-subject').value = '';
-            document.getElementById('new-form-start').value = '';
-            document.getElementById('new-form-end').value = '';
-        });
-
-        currentFormsContainer.addEventListener('click', (event) => {
+        currentFormsContainer.addEventListener('click', async (event) => {
             if (event.target.classList.contains('delete-btn')) {
-                const formIdToDelete = event.target.getAttribute('data-id');
+                const formId = event.target.getAttribute('data-id');
                 if (confirm('정말로 이 양식을 삭제하시겠습니까?')) {
-                    forms = forms.filter(form => form.id !== formIdToDelete);
-                    saveForms();
-                    renderAll();
+                    const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키 정보가 없습니다.'); return; }
+                    if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE', apiKey)) { loadFormsFromServer(); }
+                }
+            }
+        });
+
+        processedTodayContainer.addEventListener('click', async (event) => {
+            if (event.target.classList.contains('reprocess-btn')) {
+                const submissionId = event.target.getAttribute('data-id');
+                const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키 정보가 없습니다.'); return; }
+                if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?\n\n이 작업 후, 조교가 수정된 답안을 웹에서 다시 제출해야 합니다.`)) {
+                    if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST', apiKey)) { loadProcessedToday(apiKey); }
                 }
             }
         });
         
         formSelect.addEventListener('change', function() {
-            const formId = this.value;
-            const mainContent = document.getElementById('main-content');
-            const answersContainer = document.getElementById('answers-container');
-            const subjectInput = document.getElementById('subject');
-
-            if (!formId) {
-                mainContent.style.display = 'none'; return;
-            }
-
+            const formId = this.value, mainContent = document.getElementById('main-content'), answersContainer = document.getElementById('answers-container'), subjectInput = document.getElementById('subject');
+            if (!formId) { mainContent.style.display = 'none'; return; }
             const selectedForm = forms.find(form => form.id === formId);
             if (selectedForm) {
-                subjectInput.value = selectedForm.subject;
-                answersContainer.innerHTML = '';
-                // [변경] 시작 번호부터 끝 번호까지 반복하여 문제 입력란 생성
+                subjectInput.value = selectedForm.subject; answersContainer.innerHTML = '';
                 for (let i = selectedForm.startNumber; i <= selectedForm.endNumber; i++) {
-                    const newRow = document.createElement('div');
-                    newRow.className = 'answer-row';
-                    newRow.innerHTML = `
-                        <input type="text" class="question_number" value="${i}" readonly>
-                        <select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select>
-                        <input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">
-                    `;
+                    const newRow = document.createElement('div'); newRow.className = 'answer-row';
+                    newRow.innerHTML = `<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`;
                     answersContainer.appendChild(newRow);
                 }
                 mainContent.style.display = 'block';
             }
         });
         
-        // 제출 로직은 변경할 필요 없음
         document.getElementById('submission-form').addEventListener('submit', function(event) {
             event.preventDefault();
             const formId = document.getElementById('form-select').value;
             const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] };
             document.querySelectorAll('.answer-row').forEach(row => {
                 const qNum = row.querySelector('.question_number').value;
-                if (qNum) {
-                    studentData.answers.push({ "Question Number": qNum, "is_correct": row.querySelector('.is_correct').value === 'true', "failed_edge_id": row.querySelector('.failed_edge_id').value });
-                }
+                if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": row.querySelector('.is_correct').value === 'true', "failed_edge_id": row.querySelector('.failed_edge_id').value }); }
             });
             fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) })
-            .then(response => response.json()).then(data => {
-                const messageDiv = document.getElementById('message');
-                messageDiv.textContent = data.message;
-                messageDiv.className = 'success';
-                messageDiv.style.display = 'block';
-                document.getElementById('main-content').style.display = 'none';
-                document.getElementById('form-select').value = '';
-                this.reset();
-            }).catch(error => console.error('Error:', error));
+                .then(res => res.json()).then(data => {
+                    const msgDiv = document.getElementById('message'); msgDiv.textContent = data.message; msgDiv.className = 'success'; msgDiv.style.display = 'block';
+                    document.getElementById('main-content').style.display = 'none'; formSelect.value = ''; this.reset();
+                    setTimeout(() => msgDiv.style.display = 'none', 3000);
+                }).catch(err => {
+                    const msgDiv = document.getElementById('message'); msgDiv.textContent = '제출 중 오류 발생'; msgDiv.className = 'error'; msgDiv.style.display = 'block';
+                    console.error('Error:', err);
+                });
         });
-
-        loadForms();
-        renderAll();
+        
+        window.onload = loadFormsFromServer;
     </script>
 </body>
 </html>

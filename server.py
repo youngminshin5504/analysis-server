@@ -7,112 +7,199 @@ from datetime import datetime
 # --- Flask 앱 초기화 ---
 app = Flask(__name__, template_folder='.')
 
-# --- 데이터 저장을 위한 설정 ---
-DB_FILE = 'submissions.json'
-# [중요] 보안을 위한 API 비밀 키. 실제 운영 시에는 환경 변수를 사용하는 것이 더 안전합니다.
-# 이 키는 외부로 절대 노출되면 안 됩니다.
+# --- 데이터 저장을 위한 설정: Persistent Disk 경로 사용 ---
+DATA_DIR = "/var/data" 
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+DB_FILE = os.path.join(DATA_DIR, "submissions.json")
+FORMS_DB_FILE = os.path.join(DATA_DIR, "forms.json")
 API_SECRET_KEY = os.getenv("API_KEY", "MySuperSecretKey123!")
 
 # --- 데이터베이스 파일 초기화 함수 ---
-def init_db():
-    """ 서버가 처음 시작될 때 데이터 저장 파일이 없으면 새로 만들어주는 함수 """
-    if not os.path.exists(DB_FILE):
-        with open(DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump([], f, ensure_ascii=False, indent=2)
-        print(f"데이터 파일 '{DB_FILE}'을 생성했습니다.")
+def init_all_dbs():
+    """ 서버가 처음 시작될 때 모든 데이터 저장 파일이 없으면 새로 만들어주는 함수 """
+    for db_path in [DB_FILE, FORMS_DB_FILE]:
+        if not os.path.exists(db_path):
+            with open(db_path, 'w', encoding='utf-8') as f:
+                json.dump([], f, ensure_ascii=False, indent=2)
+            print(f"데이터 파일 '{db_path}'을 생성했습니다.")
 
 # --- API 엔드포인트(URL 경로) 정의 ---
 
-# 조교가 접속하는 페이지는 보안이 필요 없습니다.
 @app.route('/', methods=['GET'])
 def index():
-    """ 사용자가 웹 브라우저로 접속하면 보게 될 메인 페이지를 렌더링합니다. """
     return render_template('index.html')
 
-# 조교가 데이터를 제출하는 것도 보안이 필요 없습니다.
+# --- 폼(Form) 관리를 위한 API들 ---
+
+@app.route('/api/forms', methods=['GET'])
+def get_forms():
+    """ 저장된 모든 폼의 목록을 반환합니다. (누구나 조회 가능) """
+    try:
+        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
+            forms = json.load(f)
+        return jsonify(forms)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify([])
+
+@app.route('/api/forms', methods=['POST'])
+def add_form():
+    """ 새로운 폼을 추가합니다. (관리자만 가능) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    new_form_data = request.get_json()
+    try:
+        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
+            forms = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        forms = []
+    
+    forms.append(new_form_data)
+    
+    with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(forms, f, ensure_ascii=False, indent=2)
+        
+    return jsonify({"message": "새로운 양식이 성공적으로 저장되었습니다."}), 201
+
+@app.route('/api/forms/<form_id>', methods=['DELETE'])
+def delete_form(form_id):
+    """ 특정 ID의 폼을 삭제합니다. (관리자만 가능) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    try:
+        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
+            forms = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        forms = []
+    
+    forms_after_delete = [form for form in forms if form.get('id') != form_id]
+    
+    if len(forms) == len(forms_after_delete):
+        return jsonify({"error": "해당 ID의 양식을 찾을 수 없습니다."}), 404
+        
+    with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(forms_after_delete, f, ensure_ascii=False, indent=2)
+        
+    return jsonify({"message": "양식이 성공적으로 삭제되었습니다."})
+
+# --- 제출(Submission) 데이터 관리를 위한 API들 ---
+
 @app.route('/submit', methods=['POST'])
 def submit_data():
-    """ 학생 답안 데이터를 제출받아 저장하는 API """
+    """ 학생 답안 데이터를 제출받아 저장합니다. """
     data = request.get_json()
     print(f"새로운 데이터 수신: {data.get('student_name')}")
-    
-    db_data = [] # 우선 빈 리스트로 시작합니다.
+    db_data = []
     try:
-        # [수정] 먼저 파일을 읽어보려고 시도합니다.
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             db_data = json.load(f)
-    except FileNotFoundError:
-        # [수정] 만약 파일이 없다는 에러(FileNotFoundError)가 발생하면,
-        # 아무것도 하지 않고 그냥 지나갑니다. (db_data는 여전히 빈 리스트)
-        print(f"'{DB_FILE}' 파일이 존재하지 않아 새로 생성합니다.")
-    except json.JSONDecodeError:
-        # [추가] 파일은 있지만 내용이 비어있거나 깨졌을 경우를 대비합니다.
-        print(f"'{DB_FILE}' 파일 내용이 비어있어 새로 시작합니다.")
-        db_data = []
-
-    # 새로 받은 데이터에 추가 정보(ID, 상태, 제출 시간)를 붙여줍니다.
+    except (FileNotFoundError, json.JSONDecodeError):
+        print(f"'{DB_FILE}' 파일을 새로 생성합니다.")
+    
     submission_id = len(db_data) + 1
     data['id'] = submission_id
     data['status'] = 'pending'
     data['submitted_at'] = datetime.now().isoformat()
     db_data.append(data)
-
-    # 변경된 내용을 다시 데이터베이스 파일에 덮어씁니다.
-    # 이 때는 'w'(쓰기) 모드이므로 파일이 없으면 자동으로 새로 만듭니다.
+    
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(db_data, f, ensure_ascii=False, indent=2)
-
+        
     return jsonify({"message": "데이터가 성공적으로 제출되었습니다.", "id": submission_id}), 201
-
-# --- [중요] 지금부터는 관리자만 접근해야 하는 API 이므로 보안 체크를 추가합니다. ---
 
 @app.route('/pending-data', methods=['GET'])
 def get_pending_data():
-    """ '처리 대기 중' 상태인 모든 데이터를 반환하는 API (보안 적용) """
-    # [보안] 요청 헤더에 포함된 API 키를 확인합니다.
-    request_key = request.headers.get('X-API-KEY')
-    if request_key != API_SECRET_KEY:
-        print(f"보안 경고: 잘못된 API 키로 접근 시도됨 - {request_key}")
-        return jsonify({"error": "Unauthorized"}), 401 # 허가되지 않은 접근은 거부
-
-    print("\n[보안 통과] 분석 스크립트로부터 처리 대기 데이터 요청을 받았습니다.")
-    with open(DB_FILE, 'r', encoding='utf-8') as f:
-        db_data = json.load(f)
-    
+    """ '처리 대기 중' 상태인 모든 데이터를 반환합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    print("\n[보안 통과] 처리 대기 데이터 요청 수신.")
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        db_data = []
+        
     pending_list = [item for item in db_data if item.get('status') == 'pending']
-    print(f"총 {len(pending_list)}개의 처리 대기 데이터를 전송합니다.")
     return jsonify(pending_list)
 
 @app.route('/mark-processed', methods=['POST'])
 def mark_processed():
-    """ 지정된 ID들의 상태를 'processed'로 변경하는 API (보안 적용) """
-    # [보안] 여기도 똑같이 API 키를 확인합니다.
-    request_key = request.headers.get('X-API-KEY')
-    if request_key != API_SECRET_KEY:
-        print(f"보안 경고: 잘못된 API 키로 상태 변경 시도됨 - {request_key}")
+    """ 지정된 ID 목록의 데이터 상태를 'processed'로 변경합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
         return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.get_json()
-    processed_ids = data.get('ids', [])
-    print(f"\n[보안 통과] {processed_ids} 항목들을 '처리 완료' 상태로 변경 요청을 받았습니다.")
-
-    with open(DB_FILE, 'r', encoding='utf-8') as f:
-        db_data = json.load(f)
-
+        
+    processed_ids = request.get_json().get('ids', [])
+    print(f"\n[보안 통과] {len(processed_ids)}개 항목 처리 완료 요청 수신.")
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        db_data = []
+        
     for item in db_data:
         if item.get('id') in processed_ids:
             item['status'] = 'processed'
             item['processed_at'] = datetime.now().isoformat()
-    
+            
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(db_data, f, ensure_ascii=False, indent=2)
+        
+    return jsonify({"message": f"{len(processed_ids)}개 항목이 처리 완료로 표시되었습니다."})
 
-    print("상태 변경 완료.")
-    return jsonify({"message": f"{len(processed_ids)}개의 항목이 처리 완료로 표시되었습니다."})
+# --- 특정 학생 재처리를 위한 API들 ---
+
+@app.route('/api/processed-today', methods=['GET'])
+def get_processed_today():
+    """ 오늘 날짜에 'processed' 상태가 된 모든 제출 데이터를 반환합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    processed_list = []
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+        for item in db_data:
+            if item.get('status') == 'processed' and item.get('processed_at', '').startswith(today_str):
+                processed_list.append(item)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+        
+    return jsonify(processed_list)
+
+@app.route('/api/reprocess/<int:submission_id>', methods=['POST'])
+def request_reprocessing(submission_id):
+    """ 특정 ID의 제출 데이터 상태를 'pending'으로 되돌립니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
+        
+    found = False
+    for item in db_data:
+        if item.get('id') == submission_id:
+            item['status'] = 'pending'
+            item.pop('processed_at', None)
+            found = True
+            break
+            
+    if not found:
+        return jsonify({"error": "해당 ID의 제출 데이터를 찾을 수 없습니다."}), 404
+        
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(db_data, f, ensure_ascii=False, indent=2)
+        
+    return jsonify({"message": f"ID {submission_id}번 데이터가 '재처리 대기' 상태로 변경되었습니다."})
 
 # --- 서버 실행 ---
-# 로컬 테스트 시에는 `python server.py`로 실행할 수 있습니다.
-# 웹 배포 시에는 gunicorn 같은 전문 WSGI 서버가 `app` 객체를 직접 실행합니다.
 if __name__ == '__main__':
-    init_db()
-    app.run(host='0.0.0.0', port=5000)
+    init_all_dbs()
+    app.run(host='0.0.0.0', port=5000, debug=False) # 배포 시에는 debug=False 권장
