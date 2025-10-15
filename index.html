@@ -14,6 +14,7 @@
         input, select { width: 100%; padding: 0.8em; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 0.8em 1.5em; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; }
         button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
         .delete-btn, .reprocess-btn { font-size: 0.8em; padding: 0.4em 0.8em; }
         .delete-btn { background-color: #dc3545; }
         .reprocess-btn { background-color: #ffc107; color: black; }
@@ -68,16 +69,16 @@
         </div>
         <div id="message"></div>
     </div>
-    <div id="detailsModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span><h2 id="modalDateTitle"></h2>
-            <div id="student-details-container"></div>
-        </div>
-    </div>
+    <div id="detailsModal" class="modal"><div class="modal-content"><span class="close">&times;</span><h2 id="modalDateTitle"></h2><div id="student-details-container"></div></div></div>
 
     <script>
-        const assistantPanel=document.getElementById('assistant-panel'), adminPanel=document.getElementById('admin-panel'), toggleAdminBtn=document.getElementById('toggle-admin-mode'), formSelect=document.getElementById('form-select'), currentFormsContainer=document.getElementById('current-forms-container'), modal=document.getElementById('detailsModal'), modalDateTitle=document.getElementById('modalDateTitle'), studentDetailsContainer=document.getElementById('student-details-container'), closeModal=document.getElementsByClassName("close")[0];
-        let forms=[], calendar;
+        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), currentFormsContainer = document.getElementById('current-forms-container'), modal = document.getElementById('detailsModal'), modalDateTitle = document.getElementById('modalDateTitle'), studentDetailsContainer = document.getElementById('student-details-container'), closeModal = document.getElementsByClassName("close")[0];
+        let forms = [], calendar;
+        
+        function formatKST(isoString) {
+            if (!isoString) return '';
+            return new Date(isoString).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
@@ -91,28 +92,10 @@
                 eventClick: function(info) {
                     info.jsEvent.preventDefault(); 
                     const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) return;
-
-                    const formId = info.event.extendedProps.formId;
-                    // [수정] 시간대(Timezone) 문제 해결을 위해 .startStr 속성을 직접 사용합니다.
-                    const dateStr = info.event.startStr;
-                    const formName = info.event.title;
-
+                    const formId = info.event.extendedProps.formId, dateStr = info.event.startStr, formName = info.event.title;
                     modalDateTitle.textContent = `${dateStr} - ${formName} 제출 목록`;
-                    studentDetailsContainer.innerHTML = '<h4>로딩 중...</h4>';
-                    modal.style.display = "block";
-
-                    fetch(`/api/data/by-date-form/${dateStr}/${formId}`, { headers: { 'X-API-KEY': apiKey } })
-                        .then(res => {
-                            if (!res.ok) throw new Error('데이터를 불러오는 중 서버 오류 발생');
-                            return res.json();
-                        })
-                        .then(details => {
-                            renderStudentDetails(details);
-                        })
-                        .catch(error => {
-                            console.error('Error fetching student details:', error);
-                            studentDetailsContainer.innerHTML = `<p style="color: red;">${error.message}</p>`;
-                        });
+                    studentDetailsContainer.innerHTML = '<h4>로딩 중...</h4>'; modal.style.display = "block";
+                    fetch(`/api/data/by-date-form/${dateStr}/${formId}`, { headers: { 'X-API-KEY': apiKey } }).then(res => { if (!res.ok) throw new Error('서버 오류'); return res.json(); }).then(details => renderStudentDetails(details)).catch(e => { console.error(e); studentDetailsContainer.innerHTML = `<p style="color: red;">${e.message}</p>`; });
                 }
             });
         });
@@ -121,17 +104,18 @@
             studentDetailsContainer.innerHTML = '';
             if (!details || details.length === 0) { studentDetailsContainer.textContent = '해당하는 데이터가 없습니다.'; return; }
             const table = document.createElement('table');
-            table.innerHTML = `<thead><tr><th>ID</th><th>학생명</th><th>상태</th><th>제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`;
+            table.innerHTML = `<thead><tr><th>ID</th><th>학생 식별</th><th>상태</th><th>최종 제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`;
             const tbody = table.querySelector('tbody');
             details.forEach(item => {
                 const row = tbody.insertRow();
-                const statusText = item.status === 'processed' ? `완료(${new Date(item.processed_at).toLocaleTimeString()})` : '대기';
-                row.innerHTML = `<td>${item.id}</td><td>${item.student_name}</td><td>${statusText}</td><td>${new Date(item.submitted_at).toLocaleTimeString()}</td><td><button class="reprocess-btn" data-id="${item.id}" ${item.status === 'pending' ? 'disabled' : ''}>재처리</button></td>`;
+                const studentIdentifier = `${item.student_name}(${item.phone_suffix})`;
+                const statusText = item.status === 'processed' ? `완료(${formatKST(item.processed_at)})` : '대기';
+                row.innerHTML = `<td>${item.id}</td><td>${studentIdentifier}</td><td>${statusText}</td><td>${formatKST(item.submitted_at)}</td><td><button class="reprocess-btn" data-id="${item.id}" ${item.status === 'pending' ? 'disabled' : ''}>재처리</button></td>`;
             });
             studentDetailsContainer.appendChild(table);
         }
 
-        async function loadFormsFromServer() { try { const res = await fetch('/api/forms'); if (!res.ok) throw new Error('Failed to load forms.'); forms = await res.json(); renderAll(); } catch (error) { console.error(error); alert(error.message); } }
+        async function loadFormsFromServer() { try { const res = await fetch('/api/forms'); if (!res.ok) throw new Error('양식 로딩 실패'); forms = await res.json(); renderAll(); } catch (error) { console.error(error); alert(error.message); } }
         function renderAssistantView() { formSelect.innerHTML = '<option value="">-- 양식 선택 --</option>'; forms.forEach(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; formSelect.appendChild(o); }); }
         function renderAdminView() { currentFormsContainer.innerHTML = ''; if (forms.length === 0) { currentFormsContainer.textContent = "저장된 양식 없음"; } else { forms.forEach(f => { const i = document.createElement('div'); i.className = 'form-list-item'; i.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, ${f.startNumber}~${f.endNumber}번)</span><button class="delete-btn" data-id="${f.id}">삭제</button>`; currentFormsContainer.appendChild(i); }); } }
         function renderAll() { renderAssistantView(); renderAdminView(); }
@@ -150,9 +134,9 @@
         studentDetailsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('reprocess-btn')) { const submissionId = e.target.getAttribute('data-id'); const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST', apiKey)) { e.target.textContent = '요청됨'; e.target.disabled = true; } } } });
         closeModal.onclick = () => { modal.style.display = "none"; }; window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
         formSelect.addEventListener('change', function() { const formId=this.value, mainContent=document.getElementById('main-content'), answersContainer=document.getElementById('answers-container'), subjectInput=document.getElementById('subject'); if (!formId) { mainContent.style.display='none'; return; } const selectedForm=forms.find(f => f.id === formId); if (selectedForm) { subjectInput.value=selectedForm.subject; answersContainer.innerHTML=''; for (let i=selectedForm.startNumber; i <= selectedForm.endNumber; i++) { const newRow=document.createElement('div'); newRow.className='answer-row'; newRow.innerHTML=`<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`; answersContainer.appendChild(newRow); } mainContent.style.display='block'; } });
-        document.getElementById('submission-form').addEventListener('submit', function(e) { e.preventDefault(); const formId=document.getElementById('form-select').value; const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] }; document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } }); fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); calendar.refetchEvents(); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); }); });
+        document.getElementById('submission-form').addEventListener('submit', function(e) { e.preventDefault(); const formId=document.getElementById('form-select').value; const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] }; document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } }); fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); if(calendar && adminPanel.style.display === 'block') calendar.refetchEvents(); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); }); });
         
         window.onload = loadFormsFromServer;
     </script>
 </body>
-</html>
+</html>```
