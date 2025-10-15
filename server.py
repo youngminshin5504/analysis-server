@@ -10,13 +10,7 @@ import pytz
 
 # --- Flask 앱 초기화 및 설정 ---
 app = Flask(__name__, template_folder='.')
-
-# --- 데이터 저장을 위한 설정: Persistent Disk 경로 사용 ---
 DATA_DIR = "/var/data"
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
-
-# 서버가 로컬 파일 경로도 알아야 삭제 작업을 수행할 수 있습니다.
 STUDENT_DB_DIRECTORY = os.path.join(DATA_DIR, "students")
 STUDENT_BACKUP_DIRECTORY = os.path.join(STUDENT_DB_DIRECTORY, "backups")
 DB_FILE = os.path.join(DATA_DIR, "submissions.json")
@@ -24,28 +18,18 @@ FORMS_DB_FILE = os.path.join(DATA_DIR, "forms.json")
 API_SECRET_KEY = os.getenv("API_KEY", "MySuperSecretKey123!")
 KST = pytz.timezone('Asia/Seoul')
 
-# --- 데이터베이스 파일 및 디렉터리 초기화 함수 ---
 def init_all_dbs():
-    """ 서버가 처음 시작될 때 모든 데이터 파일과 디렉터리가 없으면 새로 생성합니다. """
     paths_to_create = [DATA_DIR, STUDENT_DB_DIRECTORY, STUDENT_BACKUP_DIRECTORY]
     for p in paths_to_create:
-        if not os.path.exists(p):
-            os.makedirs(p)
-            print(f"디렉터리 '{p}'를 생성했습니다.")
-
+        if not os.path.exists(p): os.makedirs(p)
     for db_path in [DB_FILE, FORMS_DB_FILE]:
         if not os.path.exists(db_path):
-            with open(db_path, 'w', encoding='utf-8') as f:
-                json.dump([], f, ensure_ascii=False, indent=2)
-            print(f"데이터 파일 '{db_path}'을 생성했습니다.")
+            with open(db_path, 'w', encoding='utf-8') as f: json.dump([], f, ensure_ascii=False, indent=2)
 
-# --- API 엔드포인트(URL 경로) 정의 ---
+# --- API 엔드포인트 ---
 
 @app.route('/')
-def index():
-    return render_template('index.html')
-
-# --- 폼(Form) 관리를 위한 API들 ---
+def index(): return render_template('index.html')
 
 @app.route('/api/forms', methods=['GET'])
 def get_forms():
@@ -77,8 +61,6 @@ def delete_form(form_id):
     with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms_after_delete, f, ensure_ascii=False, indent=2)
     return jsonify({"message": "양식이 성공적으로 삭제되었습니다."})
 
-# --- 제출(Submission) 데이터 관리를 위한 API들 ---
-
 @app.route('/submit', methods=['POST'])
 def submit_data():
     data = request.get_json(); print(f"새로운 데이터 수신: {data.get('student_name')}"); db_data = []
@@ -93,7 +75,6 @@ def submit_data():
             item_date_str = datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')
             item_key = (item_date_str, item.get('student_name'), item.get('phone_suffix'), item.get('form_id'))
             if item_key == key_to_check:
-                print(f"중복 제출 발견: ID {item.get('id')}번 데이터를 덮어씁니다.")
                 data['id'] = item['id']; data['status'] = 'pending'; data['submitted_at'] = now_kst.isoformat()
                 db_data[i] = data; found_and_updated = True; break
         except (ValueError, TypeError): continue
@@ -124,8 +105,6 @@ def mark_processed():
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     return jsonify({"message": f"{len(processed_ids)}개 항목이 처리 완료로 표시되었습니다."})
 
-# --- 달력(Calendar) 및 데이터 조회/수정 API들 ---
-
 @app.route('/api/calendar/events', methods=['GET'])
 def get_calendar_events():
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
@@ -150,16 +129,28 @@ def get_calendar_events():
 @app.route('/api/data/by-date-form/<string:date_str>/<string:form_id>', methods=['GET'])
 def get_data_by_date_and_form(date_str, form_id):
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
-    matching_data = []
+    latest_submissions = {}
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             try:
                 item_date_str = datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')
-                if item_date_str == date_str and item.get('form_id') == form_id: matching_data.append(item)
+                if item_date_str == date_str and item.get('form_id') == form_id:
+                    student_key = (item.get('student_name'), item.get('phone_suffix'))
+                    if (student_key not in latest_submissions or item.get('submitted_at') > latest_submissions[student_key].get('submitted_at')):
+                        latest_submissions[student_key] = item
             except (ValueError, TypeError): continue
     except (FileNotFoundError, json.JSONDecodeError): pass
-    return jsonify(matching_data)
+    return jsonify(list(latest_submissions.values()))
+
+@app.route('/api/submission/<int:submission_id>', methods=['GET'])
+def get_submission_details(submission_id):
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
+        for item in db_data:
+            if item.get('id') == submission_id: return jsonify(item)
+    except (FileNotFoundError, json.JSONDecodeError): pass
+    return jsonify({"error": "해당 ID의 데이터를 찾을 수 없습니다."}), 404
     
 @app.route('/api/reprocess/<int:submission_id>', methods=['POST'])
 def request_reprocessing(submission_id):
@@ -174,57 +165,40 @@ def request_reprocessing(submission_id):
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     return jsonify({"message": f"ID {submission_id}번 데이터가 '재처리 대기' 상태로 변경되었습니다."})
 
-# --- 학생 데이터 전체 재계산 API들 ---
-
 @app.route('/api/students', methods=['GET'])
 def get_all_students():
-    """ submissions.json에 기록된 모든 학생의 목록을 반환합니다. """
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
     students = set()
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             if item.get('student_name') and item.get('phone_suffix') and item.get('subject'):
-                student_id = f"{item['student_name']}({item['phone_suffix']})_{item['subject']}"
-                students.add(student_id)
+                students.add(f"{item['student_name']}({item['phone_suffix']})_{item['subject']}")
     except (FileNotFoundError, json.JSONDecodeError): pass
     return jsonify(sorted(list(students)))
 
 @app.route('/api/full-recalculate', methods=['POST'])
 def full_recalculate():
-    """ 특정 학생의 모든 데이터를 리셋하고, 모든 제출 기록을 'pending'으로 변경합니다. """
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
-    
-    student_id = request.get_json().get('student_id')
+    student_id = request.get_json().get('student_id');
     if not student_id: return jsonify({"error": "학생 ID가 필요합니다."}), 400
-    
     s_name, s_phone, s_subj = None, None, None
     match = re.match(r"(.+?)\((\d{4})\)_(.+)", student_id)
     if match: s_name, s_phone, s_subj = match.groups()
-
     s_id_safe = student_id.replace('/', '_')
     main_profile_path = os.path.join(STUDENT_DB_DIRECTORY, f"{s_id_safe}.pkl")
     if os.path.exists(main_profile_path): os.remove(main_profile_path)
-    
-    backup_files = glob.glob(os.path.join(STUDENT_BACKUP_DIRECTORY, f"{s_id_safe}_*.pkl"))
-    for f in backup_files: os.remove(f)
-
+    for f in glob.glob(os.path.join(STUDENT_BACKUP_DIRECTORY, f"{s_id_safe}_*.pkl")): os.remove(f)
     recalculated_count = 0
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
-            if (item.get('student_name') == s_name and
-                item.get('phone_suffix') == s_phone and
-                item.get('subject') == s_subj):
-                item['status'] = 'pending'
-                item.pop('processed_at', None)
-                recalculated_count += 1
+            if (item.get('student_name') == s_name and item.get('phone_suffix') == s_phone and item.get('subject') == s_subj):
+                item['status'] = 'pending'; item.pop('processed_at', None); recalculated_count += 1
         with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     except (FileNotFoundError, json.JSONDecodeError): pass
-
     return jsonify({"message": f"'{student_id}' 학생의 모든 데이터가 리셋되었습니다. 총 {recalculated_count}개의 기록이 재처리 대기 상태로 변경되었습니다."})
 
-# --- 서버 실행 ---
 if __name__ == '__main__':
     init_all_dbs()
     app.run(host='0.0.0.0', port=5000, debug=False)
