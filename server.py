@@ -2,13 +2,14 @@
 from flask import Flask, request, jsonify, render_template
 import json
 import os
-from datetime import datetime
+from datetime import datetime, date
+from collections import defaultdict
 
 # --- Flask 앱 초기화 ---
 app = Flask(__name__, template_folder='.')
 
 # --- 데이터 저장을 위한 설정: Persistent Disk 경로 사용 ---
-DATA_DIR = "/var/data" 
+DATA_DIR = "/var/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
@@ -50,11 +51,12 @@ def add_form():
         return jsonify({"error": "Unauthorized"}), 401
     
     new_form_data = request.get_json()
+    forms = []
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
             forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        forms = []
+        pass
     
     forms.append(new_form_data)
     
@@ -69,11 +71,12 @@ def delete_form(form_id):
     if request.headers.get('X-API-KEY') != API_SECRET_KEY:
         return jsonify({"error": "Unauthorized"}), 401
     
+    forms = []
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
             forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        forms = []
+        pass
     
     forms_after_delete = [form for form in forms if form.get('id') != form_id]
     
@@ -99,7 +102,8 @@ def submit_data():
     except (FileNotFoundError, json.JSONDecodeError):
         print(f"'{DB_FILE}' 파일을 새로 생성합니다.")
     
-    submission_id = len(db_data) + 1
+    # ID를 순차적으로 증가시키기 (마지막 ID + 1)
+    submission_id = (db_data[-1]['id'] + 1) if db_data else 1
     data['id'] = submission_id
     data['status'] = 'pending'
     data['submitted_at'] = datetime.now().isoformat()
@@ -150,27 +154,70 @@ def mark_processed():
         
     return jsonify({"message": f"{len(processed_ids)}개 항목이 처리 완료로 표시되었습니다."})
 
-# --- 특정 학생 재처리를 위한 API들 ---
+# --- 달력(Calendar) 및 재처리 데이터 조회를 위한 API들 ---
 
-@app.route('/api/processed-today', methods=['GET'])
-def get_processed_today():
-    """ 오늘 날짜에 'processed' 상태가 된 모든 제출 데이터를 반환합니다. (관리자용) """
-    if request.headers.get('X-API-KEY') != API_SECRET_KEY:
-        return jsonify({"error": "Unauthorized"}), 401
+@app.route('/api/calendar/events', methods=['GET'])
+def get_calendar_events():
+    """ 특정 월에 데이터가 제출된 날짜 목록을 반환합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
     
-    today_str = datetime.now().strftime('%Y-%m-%d')
-    processed_list = []
+    start_str = request.args.get('start')
+    end_str = request.args.get('end')
+    
+    event_dates = set()
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             db_data = json.load(f)
         for item in db_data:
-            if item.get('status') == 'processed' and item.get('processed_at', '').startswith(today_str):
-                processed_list.append(item)
+            submitted_date = item.get('submitted_at', '').split('T')[0]
+            if start_str <= submitted_date < end_str:
+                event_dates.add(submitted_date)
     except (FileNotFoundError, json.JSONDecodeError):
         pass
         
-    return jsonify(processed_list)
+    return jsonify([{"start": dt, "display": "background"} for dt in event_dates])
 
+@app.route('/api/data/by-date/<string:date_str>', methods=['GET'])
+def get_data_by_date(date_str):
+    """ 특정 날짜의 제출 데이터를 '폼 ID'별로 그룹화하여 요약 정보를 반환합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
+
+    forms_summary = defaultdict(lambda: {"count": 0, "form_name": "알 수 없는 양식"})
+    try:
+        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f:
+            forms_info = {form['id']: form for form in json.load(f)}
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+        
+        for item in db_data:
+            if item.get('submitted_at', '').startswith(date_str):
+                form_id = item.get('form_id')
+                forms_summary[form_id]["count"] += 1
+                if form_id in forms_info:
+                    forms_summary[form_id]["form_name"] = forms_info[form_id].get("name", "이름 없는 양식")
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+        
+    return jsonify(dict(forms_summary))
+
+@app.route('/api/data/by-date-form/<string:date_str>/<string:form_id>', methods=['GET'])
+def get_data_by_date_and_form(date_str, form_id):
+    """ 특정 날짜, 특정 폼 ID에 해당하는 모든 학생 데이터를 반환합니다. (관리자용) """
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
+
+    matching_data = []
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+        for item in db_data:
+            if item.get('submitted_at', '').startswith(date_str) and item.get('form_id') == form_id:
+                matching_data.append(item)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+        
+    return jsonify(matching_data)
+    
 @app.route('/api/reprocess/<int:submission_id>', methods=['POST'])
 def request_reprocessing(submission_id):
     """ 특정 ID의 제출 데이터 상태를 'pending'으로 되돌립니다. (관리자용) """
@@ -199,7 +246,8 @@ def request_reprocessing(submission_id):
         
     return jsonify({"message": f"ID {submission_id}번 데이터가 '재처리 대기' 상태로 변경되었습니다."})
 
+
 # --- 서버 실행 ---
 if __name__ == '__main__':
     init_all_dbs()
-    app.run(host='0.0.0.0', port=5000, debug=False) # 배포 시에는 debug=False 권장
+    app.run(host='0.0.0.0', port=5000, debug=False)
