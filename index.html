@@ -6,8 +6,41 @@
     <title>학생 답안 제출 시스템</title>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/index.global.min.js'></script>
     <style>
-        /* (스타일은 이전과 동일) */
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 2em; background-color: #f4f4f9; color: #333; } .container { max-width: 80%; margin: auto; background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); } h1, h2, h3 { color: #0056b3; } .form-group { margin-bottom: 1.2em; } label { display: block; margin-bottom: 0.5em; font-weight: bold; } input, select { width: 100%; padding: 0.8em; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; } button { padding: 0.8em 1.5em; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; } button:hover { background-color: #0056b3; } button:disabled { background-color: #6c757d; cursor: not-allowed; } .delete-btn, .reprocess-btn, .edit-btn { font-size: 0.8em; padding: 0.4em 0.8em; margin-left: 5px; } .delete-btn { background-color: #dc3545; } .reprocess-btn { background-color: #ffc107; color: black; } .edit-btn { background-color: #17a2b8; } hr { border: 0; height: 1px; background-color: #eee; margin: 2em 0; } #message { margin-top: 1em; padding: 1em; border-radius: 5px; display: none; text-align: center; font-weight: bold; } .success { background-color: #d4edda; color: #155724; } .error { background-color: #f8d7da; color: #721c24; } #admin-panel { display: none; border: 2px dashed #007bff; padding: 1.5em; border-radius: 8px; margin-top: 2em; } .form-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5em; border-bottom: 1px solid #eee; } .admin-controls { text-align: right; margin-bottom: 1em; } .input-group { display: flex; gap: 10px; } #assistant-panel { display: block; } #main-content { display: none; } #answers-container .answer-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; } .answer-row input.question_number { flex: 0 0 70px; background-color: #e9ecef; text-align: center; } .answer-row select.is_correct { flex: 0 0 120px; } .answer-row input.failed_edge_id { flex: 1 1 auto; } #calendar { max-width: 1100px; margin: 2em auto; } .fc-event { cursor: pointer; } .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); } .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; } .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; } #student-details-container { margin-top: 20px; max-height: 400px; overflow-y: auto; } #student-details-container table { width: 100%; border-collapse: collapse; } #student-details-container th, #student-details-container td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 2em; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 80%; margin: auto; background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #0056b3; }
+        .form-group { margin-bottom: 1.2em; }
+        label { display: block; margin-bottom: 0.5em; font-weight: bold; }
+        input, select { width: 100%; padding: 0.8em; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 0.8em 1.5em; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .delete-btn, .reprocess-btn, .edit-btn, .delete-record-btn { font-size: 0.8em; padding: 0.4em 0.8em; margin-left: 5px; }
+        .delete-btn, .delete-record-btn { background-color: #dc3545; }
+        .reprocess-btn { background-color: #ffc107; color: black; }
+        .edit-btn { background-color: #17a2b8; }
+        hr { border: 0; height: 1px; background-color: #eee; margin: 2em 0; }
+        #message { margin-top: 1em; padding: 1em; border-radius: 5px; display: none; text-align: center; font-weight: bold; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        #admin-panel { display: none; border: 2px dashed #007bff; padding: 1.5em; border-radius: 8px; margin-top: 2em; }
+        .form-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5em; border-bottom: 1px solid #eee; }
+        .admin-controls { text-align: right; margin-bottom: 1em; }
+        .input-group { display: flex; gap: 10px; }
+        #assistant-panel { display: block; }
+        #main-content { display: none; }
+        #answers-container .answer-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .answer-row input.question_number { flex: 0 0 70px; background-color: #e9ecef; text-align: center; }
+        .answer-row select.is_correct { flex: 0 0 120px; }
+        .answer-row input.failed_edge_id { flex: 1 1 auto; }
+        #calendar { max-width: 1100px; margin: 2em auto; }
+        .fc-event { cursor: pointer; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        #student-details-container { margin-top: 20px; max-height: 400px; overflow-y: auto; }
+        #student-details-container table { width: 100%; border-collapse: collapse; }
+        #student-details-container th, #student-details-container td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     </style>
 </head>
 <body>
@@ -44,11 +77,9 @@
     <div id="detailsModal" class="modal"><div class="modal-content"><span class="close">&times;</span><h2 id="modalDateTitle"></h2><div id="student-details-container"></div></div></div>
 
     <script>
-        // --- [용어 변경] 변수명은 유지하되, 사용자에게 보이는 텍스트를 '수업'으로 변경 ---
         const assistantPanel=document.getElementById('assistant-panel'), adminPanel=document.getElementById('admin-panel'), toggleAdminBtn=document.getElementById('toggle-admin-mode'), formSelect=document.getElementById('form-select'), currentFormsContainer=document.getElementById('current-forms-container'), modal=document.getElementById('detailsModal'), modalDateTitle=document.getElementById('modalDateTitle'), studentDetailsContainer=document.getElementById('student-details-container'), closeModal=document.getElementsByClassName("close")[0], studentSelect=document.getElementById('student-select');
         let forms=[], calendar;
-        const ADMIN_PASSWORD = "dusrntlf";
-        const SERVER_API_KEY = "MySuperSecretKey123!";
+        const ADMIN_PASSWORD = "dusrntlf", SERVER_API_KEY = "MySuperSecretKey123!";
         
         function formatKST(isoString) { if (!isoString) return ''; return new Date(isoString).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }); }
 
@@ -72,11 +103,11 @@
 
         function renderStudentDetails(details) {
             studentDetailsContainer.innerHTML = ''; if (!details || details.length === 0) { studentDetailsContainer.textContent = '해당하는 데이터가 없습니다.'; return; }
-            const table = document.createElement('table'); table.innerHTML = `<thead><tr><th>ID</th><th>학생 식별</th><th>상태</th><th>최종 제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`; const tbody = table.querySelector('tbody');
+            const table = document.createElement('table'); table.innerHTML = `<thead><tr><th>ID</th><th>학생 식별</th><th>상태</th><th>최종 제출 시각</th><th style="width: 210px;">작업</th></tr></thead><tbody></tbody>`; const tbody = table.querySelector('tbody');
             details.forEach(item => {
                 const row = tbody.insertRow(), studentIdentifier = `${item.student_name}(${item.phone_suffix})`;
                 const statusText = item.status === 'processed' ? `완료(${formatKST(item.processed_at)})` : '대기';
-                row.innerHTML = `<td>${item.id}</td><td>${studentIdentifier}</td><td>${statusText}</td><td>${formatKST(item.submitted_at)}</td><td><button class="reprocess-btn" data-id="${item.id}" ${item.status === 'pending' ? 'disabled' : ''}>재처리</button><button class="edit-btn" data-id="${item.id}">수정</button></td>`;
+                row.innerHTML = `<td>${item.id}</td><td>${studentIdentifier}</td><td>${statusText}</td><td>${formatKST(item.submitted_at)}</td><td><button class="reprocess-btn" data-id="${item.id}" ${item.status === 'pending' ? 'disabled' : ''}>재처리</button><button class="edit-btn" data-id="${item.id}">수정</button><button class="delete-record-btn" data-id="${item.id}">삭제</button></td>`;
             });
             studentDetailsContainer.appendChild(table);
         }
@@ -113,7 +144,7 @@
         });
         
         async function handleAdminAction(url, method, body) {
-            const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('관리자 세션이 만료되었습니다. 다시 로그인해주세요.'); return false; }
+            const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('관리자 세션 만료. 다시 로그인해주세요.'); return false; }
             try {
                 const opts = { method, headers: { 'X-API-KEY': apiKey } }; if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
                 const res = await fetch(url, opts); const result = await res.json(); if (!res.ok) throw new Error(result.error || '작업 실패');
@@ -134,22 +165,23 @@
         currentFormsContainer.addEventListener('click', async (e) => {
             if (e.target.classList.contains('delete-btn')) {
                 const formId = e.target.getAttribute('data-id');
-                if (confirm('정말로 이 수업을 삭제하시겠습니까?')) { // [용어 변경]
-                    if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE')) { loadFormsFromServer(); calendar.refetchEvents(); }
-                }
+                if (confirm('정말로 이 수업을 삭제하시겠습니까?')) { if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE')) { loadFormsFromServer(); calendar.refetchEvents(); } }
             }
         });
 
         studentDetailsContainer.addEventListener('click', async (e) => {
-            const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; }
+            const submissionId = e.target.getAttribute('data-id');
             if (e.target.classList.contains('reprocess-btn')) {
-                const submissionId = e.target.getAttribute('data-id');
                 if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST')) { e.target.textContent = '요청됨'; e.target.disabled = true; } }
             }
             if (e.target.classList.contains('edit-btn')) {
-                const submissionId = e.target.getAttribute('data-id');
                 if (confirm(`ID ${submissionId}번 데이터를 불러와 수정하시겠습니까?`)) {
                     try { const response = await fetch(`/api/submission/${submissionId}`); const data = await response.json(); if (!response.ok) throw new Error(data.error || '데이터 로딩 실패'); populateFormForEdit(data); } catch (error) { alert(error.message); }
+                }
+            }
+            if (e.target.classList.contains('delete-record-btn')) {
+                if (confirm(`[주의!] ID ${submissionId}번 제출 기록을 영구적으로 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!`)) {
+                    if (await handleAdminAction(`/api/submission/${submissionId}`, 'DELETE')) { e.target.closest('tr').remove(); calendar.refetchEvents(); }
                 }
             }
         });
@@ -182,11 +214,15 @@
         
         document.getElementById('submission-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            const formId=document.getElementById('form-select').value;
-            if (!formId) { alert("먼저 수업을 선택해주세요."); return; } // [용어 변경]
+            const formId=document.getElementById('form-select').value; if (!formId) { alert("먼저 수업을 선택해주세요."); return; }
             const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] };
             document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } });
-            fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); if(calendar && adminPanel.style.display === 'block') calendar.refetchEvents(); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); });
+            fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => {
+                const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block';
+                document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset();
+                setTimeout(() => msgDiv.style.display='none', 3000);
+                if(calendar && adminPanel.style.display === 'block') calendar.refetchEvents();
+            }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); });
         });
         
         window.onload = loadFormsFromServer;

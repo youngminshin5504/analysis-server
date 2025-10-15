@@ -1,6 +1,9 @@
 # --- 필요한 라이브러리 불러오기 ---
 from flask import Flask, request, jsonify, render_template
-import json, os, re, glob
+import json
+import os
+import re
+import glob
 from datetime import datetime
 from collections import defaultdict
 import pytz
@@ -11,12 +14,13 @@ DATA_DIR = "/var/data"
 STUDENT_DB_DIRECTORY = os.path.join(DATA_DIR, "students")
 STUDENT_BACKUP_DIRECTORY = os.path.join(STUDENT_DB_DIRECTORY, "backups")
 DB_FILE = os.path.join(DATA_DIR, "submissions.json")
-FORMS_DB_FILE = os.path.join(DATA_DIR, "forms.json") # 파일 이름은 내부적으로 유지
+FORMS_DB_FILE = os.path.join(DATA_DIR, "forms.json")
 API_SECRET_KEY = os.getenv("API_KEY", "MySuperSecretKey123!")
 KST = pytz.timezone('Asia/Seoul')
 
 def init_all_dbs():
-    for p in [DATA_DIR, STUDENT_DB_DIRECTORY, STUDENT_BACKUP_DIRECTORY]:
+    paths_to_create = [DATA_DIR, STUDENT_DB_DIRECTORY, STUDENT_BACKUP_DIRECTORY]
+    for p in paths_to_create:
         if not os.path.exists(p): os.makedirs(p)
     for db_path in [DB_FILE, FORMS_DB_FILE]:
         if not os.path.exists(db_path):
@@ -43,7 +47,7 @@ def add_form():
     except (FileNotFoundError, json.JSONDecodeError): pass
     forms.append(new_form_data)
     with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms, f, ensure_ascii=False, indent=2)
-    return jsonify({"message": "새로운 수업이 성공적으로 저장되었습니다."}), 201 # [용어 변경]
+    return jsonify({"message": "새로운 수업이 성공적으로 저장되었습니다."}), 201
 
 @app.route('/api/forms/<form_id>', methods=['DELETE'])
 def delete_form(form_id):
@@ -53,9 +57,9 @@ def delete_form(form_id):
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): pass
     forms_after_delete = [form for form in forms if form.get('id') != form_id]
-    if len(forms) == len(forms_after_delete): return jsonify({"error": "해당 ID의 수업을 찾을 수 없습니다."}), 404 # [용어 변경]
+    if len(forms) == len(forms_after_delete): return jsonify({"error": "해당 ID의 수업을 찾을 수 없습니다."}), 404
     with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms_after_delete, f, ensure_ascii=False, indent=2)
-    return jsonify({"message": "수업이 성공적으로 삭제되었습니다."}) # [용어 변경]
+    return jsonify({"message": "수업이 성공적으로 삭제되었습니다."})
 
 @app.route('/submit', methods=['POST'])
 def submit_data():
@@ -106,7 +110,7 @@ def get_calendar_events():
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
     start_str, end_str = request.args.get('start'), request.args.get('end'); events_to_show = defaultdict(set)
     try:
-        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms_info = {form['id']: form.get('name', '이름 없는 수업') for form in json.load(f)} # [용어 변경]
+        with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms_info = {form['id']: form.get('name', 'N/A') for form in json.load(f)}
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             try:
@@ -119,23 +123,47 @@ def get_calendar_events():
     calendar_events = []
     for date_str, form_ids in events_to_show.items():
         for form_id in form_ids:
-            form_name = forms_info.get(form_id, "알 수 없는 수업") # [용어 변경]
-            calendar_events.append({"title": form_name, "start": date_str, "extendedProps": {"formId": form_id}})
+            calendar_events.append({"title": forms_info.get(form_id, "알 수 없는 수업"), "start": date_str, "extendedProps": {"formId": form_id}})
     return jsonify(calendar_events)
 
 @app.route('/api/data/by-date-form/<string:date_str>/<string:form_id>', methods=['GET'])
 def get_data_by_date_and_form(date_str, form_id):
     if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
-    matching_data = []
+    latest_submissions = {}
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             try:
                 item_date_str = datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')
-                if item_date_str == date_str and item.get('form_id') == form_id: matching_data.append(item)
+                if item_date_str == date_str and item.get('form_id') == form_id:
+                    student_key = (item.get('student_name'), item.get('phone_suffix'))
+                    if (student_key not in latest_submissions or item.get('submitted_at') > latest_submissions[student_key].get('submitted_at')):
+                        latest_submissions[student_key] = item
             except (ValueError, TypeError): continue
     except (FileNotFoundError, json.JSONDecodeError): pass
-    return jsonify(matching_data)
+    return jsonify(list(latest_submissions.values()))
+
+@app.route('/api/submission/<int:submission_id>', methods=['GET'])
+def get_submission_details(submission_id):
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
+        for item in db_data:
+            if item.get('id') == submission_id: return jsonify(item)
+    except (FileNotFoundError, json.JSONDecodeError): pass
+    return jsonify({"error": "해당 ID의 데이터를 찾을 수 없습니다."}), 404
+
+@app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
+def delete_submission(submission_id):
+    if request.headers.get('X-API-KEY') != API_SECRET_KEY: return jsonify({"error": "Unauthorized"}), 401
+    db_data = []
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError): return jsonify({"error": "제출 데이터 파일을 찾을 수 없습니다."}), 404
+    initial_length = len(db_data)
+    db_data_after_delete = [item for item in db_data if item.get('id') != submission_id]
+    if len(db_data_after_delete) == initial_length: return jsonify({"error": "해당 ID의 제출 기록을 찾을 수 없습니다."}), 404
+    with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data_after_delete, f, ensure_ascii=False, indent=2)
+    return jsonify({"message": f"ID {submission_id}번 제출 기록이 영구적으로 삭제되었습니다."})
     
 @app.route('/api/reprocess/<int:submission_id>', methods=['POST'])
 def request_reprocessing(submission_id):
