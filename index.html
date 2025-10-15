@@ -76,8 +76,8 @@
     </div>
 
     <script>
-        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), currentFormsContainer = document.getElementById('current-forms-container'), modal = document.getElementById('detailsModal'), modalDateTitle = document.getElementById('modalDateTitle'), studentDetailsContainer = document.getElementById('student-details-container'), closeModal = document.getElementsByClassName("close")[0];
-        let forms = [], calendar;
+        const assistantPanel=document.getElementById('assistant-panel'), adminPanel=document.getElementById('admin-panel'), toggleAdminBtn=document.getElementById('toggle-admin-mode'), formSelect=document.getElementById('form-select'), currentFormsContainer=document.getElementById('current-forms-container'), modal=document.getElementById('detailsModal'), modalDateTitle=document.getElementById('modalDateTitle'), studentDetailsContainer=document.getElementById('student-details-container'), closeModal=document.getElementsByClassName("close")[0];
+        let forms=[], calendar;
 
         document.addEventListener('DOMContentLoaded', function() {
             calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
@@ -88,13 +88,13 @@
                     fetch(`/api/calendar/events?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`, { headers: { 'X-API-KEY': apiKey } })
                         .then(res => res.json()).then(events => successCallback(events)).catch(err => { alert('달력 데이터 로딩 실패'); failureCallback(err); });
                 },
-                // [변경] dateClick 대신 eventClick 사용
                 eventClick: function(info) {
-                    info.jsEvent.preventDefault(); // 기본 동작 방지
+                    info.jsEvent.preventDefault(); 
                     const apiKey = sessionStorage.getItem('tempApiKey'); if (!apiKey) return;
 
                     const formId = info.event.extendedProps.formId;
-                    const dateStr = info.event.start.toISOString().split('T')[0];
+                    // [수정] 시간대(Timezone) 문제 해결을 위해 .startStr 속성을 직접 사용합니다.
+                    const dateStr = info.event.startStr;
                     const formName = info.event.title;
 
                     modalDateTitle.textContent = `${dateStr} - ${formName} 제출 목록`;
@@ -102,9 +102,16 @@
                     modal.style.display = "block";
 
                     fetch(`/api/data/by-date-form/${dateStr}/${formId}`, { headers: { 'X-API-KEY': apiKey } })
-                        .then(res => res.json())
+                        .then(res => {
+                            if (!res.ok) throw new Error('데이터를 불러오는 중 서버 오류 발생');
+                            return res.json();
+                        })
                         .then(details => {
                             renderStudentDetails(details);
+                        })
+                        .catch(error => {
+                            console.error('Error fetching student details:', error);
+                            studentDetailsContainer.innerHTML = `<p style="color: red;">${error.message}</p>`;
                         });
                 }
             });
@@ -112,7 +119,7 @@
 
         function renderStudentDetails(details) {
             studentDetailsContainer.innerHTML = '';
-            if (details.length === 0) { studentDetailsContainer.textContent = '해당하는 데이터가 없습니다.'; return; }
+            if (!details || details.length === 0) { studentDetailsContainer.textContent = '해당하는 데이터가 없습니다.'; return; }
             const table = document.createElement('table');
             table.innerHTML = `<thead><tr><th>ID</th><th>학생명</th><th>상태</th><th>제출 시각</th><th>작업</th></tr></thead><tbody></tbody>`;
             const tbody = table.querySelector('tbody');
@@ -143,7 +150,7 @@
         studentDetailsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('reprocess-btn')) { const submissionId = e.target.getAttribute('data-id'); const apiKey=sessionStorage.getItem('tempApiKey'); if (!apiKey) { alert('API 키가 없습니다.'); return; } if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기' 상태로 변경하시겠습니까?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST', apiKey)) { e.target.textContent = '요청됨'; e.target.disabled = true; } } } });
         closeModal.onclick = () => { modal.style.display = "none"; }; window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
         formSelect.addEventListener('change', function() { const formId=this.value, mainContent=document.getElementById('main-content'), answersContainer=document.getElementById('answers-container'), subjectInput=document.getElementById('subject'); if (!formId) { mainContent.style.display='none'; return; } const selectedForm=forms.find(f => f.id === formId); if (selectedForm) { subjectInput.value=selectedForm.subject; answersContainer.innerHTML=''; for (let i=selectedForm.startNumber; i <= selectedForm.endNumber; i++) { const newRow=document.createElement('div'); newRow.className='answer-row'; newRow.innerHTML=`<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`; answersContainer.appendChild(newRow); } mainContent.style.display='block'; } });
-        document.getElementById('submission-form').addEventListener('submit', function(e) { e.preventDefault(); const formId=document.getElementById('form-select').value; const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] }; document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } }); fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); }); });
+        document.getElementById('submission-form').addEventListener('submit', function(e) { e.preventDefault(); const formId=document.getElementById('form-select').value; const studentData = { form_id: formId, student_name: document.getElementById('student_name').value, phone_suffix: document.getElementById('phone_suffix').value, subject: document.getElementById('subject').value, answers: [] }; document.querySelectorAll('.answer-row').forEach(r => { const qNum=r.querySelector('.question_number').value; if (qNum) { studentData.answers.push({ "Question Number": qNum, "is_correct": r.querySelector('.is_correct').value==='true', "failed_edge_id": r.querySelector('.failed_edge_id').value }); } }); fetch('/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) }).then(res => res.json()).then(data => { const msgDiv=document.getElementById('message'); msgDiv.textContent=data.message; msgDiv.className='success'; msgDiv.style.display='block'; document.getElementById('main-content').style.display='none'; formSelect.value=''; this.reset(); setTimeout(() => msgDiv.style.display='none', 3000); calendar.refetchEvents(); }).catch(err => { const msgDiv=document.getElementById('message'); msgDiv.textContent='제출 오류'; msgDiv.className='error'; msgDiv.style.display='block'; console.error('Error:', err); }); });
         
         window.onload = loadFormsFromServer;
     </script>
