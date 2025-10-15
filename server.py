@@ -35,10 +35,20 @@ def submit_data():
     """ 학생 답안 데이터를 제출받아 저장하는 API """
     data = request.get_json()
     print(f"새로운 데이터 수신: {data.get('student_name')}")
-
-    # 데이터베이스 파일을 열어 기존 데이터를 읽어옵니다.
-    with open(DB_FILE, 'r', encoding='utf-8') as f:
-        db_data = json.load(f)
+    
+    db_data = [] # 우선 빈 리스트로 시작합니다.
+    try:
+        # [수정] 먼저 파일을 읽어보려고 시도합니다.
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            db_data = json.load(f)
+    except FileNotFoundError:
+        # [수정] 만약 파일이 없다는 에러(FileNotFoundError)가 발생하면,
+        # 아무것도 하지 않고 그냥 지나갑니다. (db_data는 여전히 빈 리스트)
+        print(f"'{DB_FILE}' 파일이 존재하지 않아 새로 생성합니다.")
+    except json.JSONDecodeError:
+        # [추가] 파일은 있지만 내용이 비어있거나 깨졌을 경우를 대비합니다.
+        print(f"'{DB_FILE}' 파일 내용이 비어있어 새로 시작합니다.")
+        db_data = []
 
     # 새로 받은 데이터에 추가 정보(ID, 상태, 제출 시간)를 붙여줍니다.
     submission_id = len(db_data) + 1
@@ -48,6 +58,7 @@ def submit_data():
     db_data.append(data)
 
     # 변경된 내용을 다시 데이터베이스 파일에 덮어씁니다.
+    # 이 때는 'w'(쓰기) 모드이므로 파일이 없으면 자동으로 새로 만듭니다.
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(db_data, f, ensure_ascii=False, indent=2)
 
