@@ -60,7 +60,7 @@
         </div>
         <div id="admin-panel">
             <h2>관리자 모드: 수업 관리</h2>
-            <div id="form-list"><h3>오늘 활성화된 수업 목록</h3><div id="current-forms-container"></div></div><hr><h3>새 수업 추가</h3>
+            <div id="form-list"><h3>현재 및 예정된 수업 목록</h3><div id="current-forms-container"></div></div><hr><h3>새 수업 추가</h3>
             <div class="form-group"><label for="new-form-name">수업 이름:</label><input type="text" id="new-form-name"></div>
             <div class="form-group"><label for="new-form-subject">과목명:</label><input type="text" id="new-form-subject"></div>
             <div class="form-group"><label>문제 번호 범위:</label><div class="input-group"><input type="number" id="new-form-start" min="1" placeholder="시작"><input type="number" id="new-form-end" min="1" placeholder="끝"></div></div>
@@ -110,9 +110,11 @@
         function renderAssistantView() { /* 조교 화면은 loadActiveFormsForAssistant에서 직접 렌더링 */ }
         function renderAdminView() {
             currentFormsContainer.innerHTML = ''; const todayStr = new Date().toISOString().split('T')[0];
-            const activeFormsToday = forms.filter(f => (f.startDate || '1970-01-01') <= todayStr && todayStr <= (f.endDate || '2999-12-31'));
-            if (activeFormsToday.length === 0) { currentFormsContainer.textContent = "오늘 활성화된 수업이 없습니다."; } else {
-                activeFormsToday.forEach(f => { const i = document.createElement('div'); i.className = 'form-list-item'; i.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, ${f.startDate}~${f.endDate})</span><button class="delete-btn" data-id="${f.id}">삭제</button>`; currentFormsContainer.appendChild(i); });
+            const activeFormsToday = forms.filter(f => todayStr <= (f.endDate || '2999-12-31'));
+            document.querySelector('#form-list h3').textContent = "현재 및 예정된 수업 목록";
+            if (activeFormsToday.length === 0) { currentFormsContainer.textContent = "현재 진행 중이거나 예정된 수업이 없습니다."; } else {
+                activeFormsToday.sort((a, b) => (a.endDate || '2999-12-31').localeCompare(b.endDate || '2999-12-31'));
+                activeFormsToday.forEach(f => { const i = document.createElement('div'); i.className = 'form-list-item'; i.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, 활성화: ${f.startDate} ~ ${f.endDate})</span><button class="delete-btn" data-id="${f.id}">삭제</button>`; currentFormsContainer.appendChild(i); });
             }
         }
         function renderAll() { renderAssistantView(); renderAdminView(); }
@@ -131,7 +133,12 @@
         
         document.getElementById('add-form-btn').addEventListener('click', async () => { const n=document.getElementById('new-form-name').value.trim(), s=document.getElementById('new-form-subject').value.trim(), st=parseInt(document.getElementById('new-form-start').value, 10), e=parseInt(document.getElementById('new-form-end').value, 10), sd=document.getElementById('new-form-start-date').value, ed=document.getElementById('new-form-end-date').value; if (!n || !s || !st || !e || st < 1 || e < st || !sd || !ed) { alert('모든 항목을 올바르게 입력해주세요.'); return; } const nf = { id: `form_${Date.now()}`, name: n, subject: s, startNumber: st, endNumber: e, startDate: sd, endDate: ed }; if (await handleAdminAction('/api/forms', 'POST', nf)) { document.getElementById('new-form-name').value = ''; document.getElementById('new-form-subject').value = ''; document.getElementById('new-form-start').value = ''; document.getElementById('new-form-end').value = ''; document.getElementById('new-form-start-date').value = ''; document.getElementById('new-form-end-date').value = ''; loadAllFormsForAdmin(); calendar.refetchEvents(); } });
         currentFormsContainer.addEventListener('click', async (e) => { if (e.target.classList.contains('delete-btn')) { const formId = e.target.getAttribute('data-id'); if (confirm('정말로 이 수업을 삭제하시겠습니까?')) { if (await handleAdminAction(`/api/forms/${formId}`, 'DELETE')) { loadAllFormsForAdmin(); calendar.refetchEvents(); } } } });
-        studentDetailsContainer.addEventListener('click', async (e) => { const submissionId = e.target.getAttribute('data-id'); if (e.target.classList.contains('reprocess-btn')) { if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기'로 변경할까요?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST')) { e.target.textContent = '요청됨'; e.target.disabled = true; } } } if (e.target.classList.contains('edit-btn')) { if (confirm(`ID ${submissionId}번 데이터를 불러와 수정할까요?`)) { try { const response = await fetch(`/api/submission/${submissionId}`); const data = await response.json(); if (!response.ok) throw new Error(data.error || '데이터 로딩 실패'); populateFormForEdit(data); } catch (error) { alert(error.message); } } } if (e.target.classList.contains('delete-record-btn')) { if (confirm(`[주의!] ID ${submissionId}번 기록을 영구적으로 삭제하시겠습니까?`)) { if (await handleAdminAction(`/api/submission/${submissionId}`, 'DELETE')) { e.target.closest('tr').remove(); calendar.refetchEvents(); } } } });
+        studentDetailsContainer.addEventListener('click', async (e) => {
+            const submissionId = e.target.getAttribute('data-id');
+            if (e.target.classList.contains('reprocess-btn')) { if (confirm(`ID ${submissionId}번 데이터를 '재처리 대기'로 변경할까요?`)) { if (await handleAdminAction(`/api/reprocess/${submissionId}`, 'POST')) { e.target.textContent = '요청됨'; e.target.disabled = true; } } }
+            if (e.target.classList.contains('edit-btn')) { if (confirm(`ID ${submissionId}번 데이터를 불러와 수정할까요?`)) { try { const response = await fetch(`/api/submission/${submissionId}`); const data = await response.json(); if (!response.ok) throw new Error(data.error || '데이터 로딩 실패'); populateFormForEdit(data); } catch (error) { alert(error.message); } } }
+            if (e.target.classList.contains('delete-record-btn')) { if (confirm(`[주의!] ID ${submissionId}번 기록을 영구적으로 삭제하시겠습니까?`)) { if (await handleAdminAction(`/api/submission/${submissionId}`, 'DELETE')) { e.target.closest('tr').remove(); calendar.refetchEvents(); } } }
+        });
         document.getElementById('full-recalc-btn').addEventListener('click', async () => { const studentId = studentSelect.value; if (!studentId) { alert('먼저 학생을 선택해주세요.'); return; } if (confirm(`'${studentId}' 학생의 모든 데이터를 리셋하시겠습니까?`)) { if (await handleAdminAction('/api/full-recalculate', 'POST', { student_id: studentId })) { studentSelect.value = ''; } } });
         closeModal.onclick = () => { modal.style.display = "none"; }; window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
         formSelect.addEventListener('change', function() { const selectedOption = this.options[this.selectedIndex]; if (!selectedOption.value) { mainContent.style.display='none'; return; } const subject=selectedOption.dataset.subject, startNumber=parseInt(selectedOption.dataset.startNumber, 10), endNumber=parseInt(selectedOption.dataset.endNumber, 10); document.getElementById('subject').value = subject; answersContainer.innerHTML=''; for (let i=startNumber; i <= endNumber; i++) { const newRow=document.createElement('div'); newRow.className='answer-row'; newRow.innerHTML=`<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`; answersContainer.appendChild(newRow); } document.getElementById('main-content').style.display='block'; });

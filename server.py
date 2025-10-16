@@ -64,7 +64,7 @@ def get_forms():
 
     if is_active_filter:
         today_str = datetime.now(KST).strftime('%Y-%m-%d')
-        active_forms = [form for form in all_forms if form.get('startDate', '1970-01-01') <= today_str <= form.get('endDate', '2999-12-31')]
+        active_forms = [form for form in all_forms if today_str <= form.get('endDate', '2999-12-31')]
         return jsonify(active_forms)
     else:
         if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
