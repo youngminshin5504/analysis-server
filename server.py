@@ -5,7 +5,7 @@ import json
 import os
 import re
 import glob
-from datetime import datetime
+from datetime import datetime, timedelta # timedelta 추가
 from collections import defaultdict
 import pytz
 
@@ -63,8 +63,16 @@ def get_forms():
     except (FileNotFoundError, json.JSONDecodeError): return jsonify([])
 
     if is_active_filter:
-        today_str = datetime.now(KST).strftime('%Y-%m-%d')
-        active_forms = [form for form in all_forms if today_str <= form.get('endDate', '2999-12-31')]
+        today = datetime.now(KST).date()
+        start_buffer_date = today + timedelta(days=7) # 7일 후까지 미리 보기
+        active_forms = []
+        for form in all_forms:
+            try:
+                start_date = datetime.strptime(form.get('startDate', '1970-01-01'), '%Y-%m-%d').date()
+                end_date = datetime.strptime(form.get('endDate', '2999-12-31'), '%Y-%m-%d').date()
+                if today <= end_date and start_date <= start_buffer_date:
+                    active_forms.append(form)
+            except (ValueError, TypeError): continue
         return jsonify(active_forms)
     else:
         if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
