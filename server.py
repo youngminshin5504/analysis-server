@@ -1,11 +1,11 @@
 # --- 필요한 라이브러리 불러오기 ---
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, make_response # make_response 추가
 from flask_session import Session
 import json
 import os
 import re
 import glob
-from datetime import datetime, timedelta # timedelta 추가
+from datetime import datetime, timedelta
 from collections import defaultdict
 import pytz
 
@@ -52,7 +52,16 @@ def auth_status(): return jsonify({"is_admin": is_admin_session()})
 
 # --- API 엔드포인트 ---
 @app.route('/')
-def index(): return render_template('index.html')
+def index():
+    """ 
+    index.html을 렌더링합니다.
+    브라우저가 이 파일을 캐싱하지 않도록 Cache-Control 헤더를 추가합니다.
+    """
+    resp = make_response(render_template('index.html'))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '-1'
+    return resp
 
 @app.route('/api/forms', methods=['GET'])
 def get_forms():
@@ -64,7 +73,7 @@ def get_forms():
 
     if is_active_filter:
         today = datetime.now(KST).date()
-        start_buffer_date = today + timedelta(days=7) # 7일 후까지 미리 보기
+        start_buffer_date = today + timedelta(days=7)
         active_forms = []
         for form in all_forms:
             try:
