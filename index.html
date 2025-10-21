@@ -71,18 +71,8 @@
             <h2>학생 데이터 전체 재계산 (주의!)</h2>
             <div class="form-group"><label for="student-select">재계산할 학생 선택:</label><select id="student-select"><option value="">-- 학생을 선택하세요 --</option></select></div>
             <button id="full-recalc-btn" class="delete-btn">선택한 학생 전체 재계산 요청</button>
-            <hr>
-            <h2>학생 성적(.pkl) 관리</h2>
-            <div class="form-group">
-                <label for="profile-select">삭제할 학생 프로필 선택:</label>
-                <select id="profile-select"><option value="">-- 프로필 목록 --</option></select>
-            </div>
-            <button id="delete-profile-btn" class="delete-btn">선택한 학생 프로필 삭제</button>
-            <p style="color: #6c757d; font-size: 0.9em;">이 작업은 학생의 누적 점수 파일(.pkl)과 모든 백업 파일을 삭제합니다. '전체 재계산'을 하기 전에 잘못된 점수 파일을 정리할 때 사용하세요.</p>
-            <hr>
-            <h2>백업 파일 정리</h2>
-            <p style="color: #6c757d; font-size: 0.9em;">서버 용량 확보를 위해, 각 학생의 각 수업별로 <strong>가장 최신 버전의 백업 파일 2개만 남기고</strong> 오래된 임시 백업 파일을 모두 삭제합니다.<br>이 작업은 학생들의 최종 누적 점수에는 영향을 주지 않습니다.</p>
-            <button id="cleanup-backups-btn">오래된 백업 파일 정리</button>
+            
+            <!-- [신규] 전체 데이터 백업 섹션 추가 -->
             <hr>
             <h2>전체 데이터 백업</h2>
             <p style="color: #6c757d; font-size: 0.9em;">서버에 저장된 모든 수업 정보, 학생 제출 기록, 성적 프로필(.pkl)을 하나의 ZIP 파일로 다운로드합니다. 데이터를 안전하게 보관하기 위해 주기적으로 백업하세요.</p>
@@ -94,7 +84,7 @@
 
     <script>
         const assistantPanel=document.getElementById('assistant-panel'), adminPanel=document.getElementById('admin-panel'), toggleAdminBtn=document.getElementById('toggle-admin-mode'), formSelect=document.getElementById('form-select'), currentFormsContainer=document.getElementById('current-forms-container'), modal=document.getElementById('detailsModal'), modalDateTitle=document.getElementById('modalDateTitle'), studentDetailsContainer=document.getElementById('student-details-container'), closeModal=document.getElementsByClassName("close")[0], studentSelect=document.getElementById('student-select');
-        const downloadBackupBtn = document.getElementById('download-backup-btn'), cleanupBackupsBtn = document.getElementById('cleanup-backups-btn'), profileSelect = document.getElementById('profile-select'), deleteProfileBtn = document.getElementById('delete-profile-btn');
+        const downloadBackupBtn = document.getElementById('download-backup-btn'); // [신규] 백업 버튼 요소
         let forms=[], calendar;
         const ADMIN_PASSWORD = "dusrntlf";
         
@@ -123,7 +113,6 @@
         async function loadActiveFormsForAssistant() { try { const res = await fetch('/api/forms?active=true'); if (!res.ok) throw new Error('활성화된 수업 목록 로딩 실패'); const activeForms = await res.json(); formSelect.innerHTML = '<option value="">-- 수업 선택 --</option>'; activeForms.forEach(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; o.dataset.subject = f.subject; o.dataset.startNumber = f.startNumber; o.dataset.endNumber = f.endNumber; formSelect.appendChild(o); }); } catch (error) { console.error(error); alert(error.message); } }
         async function loadAllFormsForAdmin() { try { const res = await fetch('/api/forms'); if (res.status === 401) { logout(); return; } if (!res.ok) throw new Error('전체 수업 목록 로딩 실패'); forms = await res.json(); renderAdminView(); } catch (error) { console.error(error); alert(error.message); } }
         async function loadAllStudents() { try { const response = await fetch('/api/students'); const students = await response.json(); studentSelect.innerHTML = '<option value="">-- 학생 선택 --</option>'; students.forEach(sId => { const o = document.createElement('option'); o.value = sId; o.textContent = sId; studentSelect.appendChild(o); }); } catch (error) { console.error('학생 목록 로딩 실패:', error); } }
-        async function loadAllProfiles() { try { const response = await fetch('/api/profiles/list'); if (response.status === 401) { logout(); return; } const profiles = await response.json(); profileSelect.innerHTML = '<option value="">-- 프로필 목록 --</option>'; profiles.forEach(profileId => { const option = document.createElement('option'); option.value = profileId; option.textContent = profileId; profileSelect.appendChild(option); }); } catch (error) { console.error('프로필 목록 로딩 실패:', error); } }
         function renderAdminView() {
             currentFormsContainer.innerHTML = ''; const todayStr = new Date().toISOString().split('T')[0];
             const activeFormsToday = forms.filter(f => todayStr <= (f.endDate || '2999-12-31'));
@@ -141,7 +130,7 @@
                 fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ password: password }) })
                 .then(res => {
                     if (res.ok) {
-                        loadAllFormsForAdmin(); loadAllStudents(); loadAllProfiles();
+                        loadAllFormsForAdmin(); loadAllStudents();
                         adminPanel.style.display = 'block'; assistantPanel.style.display = 'none';
                         toggleAdminBtn.textContent = '로그아웃';
                         if (calendar) { calendar.render(); calendar.refetchEvents(); }
@@ -164,9 +153,12 @@
         });
         document.getElementById('full-recalc-btn').addEventListener('click', async () => { const studentId = studentSelect.value; if (!studentId) { alert('먼저 학생을 선택해주세요.'); return; } if (confirm(`'${studentId}' 학생의 모든 데이터를 리셋하시겠습니까?`)) { if (await handleAdminAction('/api/full-recalculate', 'POST', { student_id: studentId })) { studentSelect.value = ''; } } });
         
-        downloadBackupBtn.addEventListener('click', () => { if (confirm("서버의 전체 데이터를 ZIP 파일로 다운로드하시겠습니까?")) { window.location.href = '/api/backup/download'; } });
-        cleanupBackupsBtn.addEventListener('click', async () => { if (confirm("각 학생/수업별로 가장 최신 백업 2개를 제외한 모든 임시 백업 파일을 영구적으로 삭제하시겠습니까?")) { await handleAdminAction('/api/backups/cleanup', 'POST'); } });
-        deleteProfileBtn.addEventListener('click', async () => { const studentId = profileSelect.value; if (!studentId) { alert('먼저 삭제할 학생 프로필을 선택해주세요.'); return; } if (confirm(`[주의!] '${studentId}' 학생의 모든 점수 파일(.pkl)을 삭제하시겠습니까?`)) { if (await handleAdminAction('/api/profiles/delete', 'POST', { student_id: studentId })) { loadAllProfiles(); loadAllStudents(); } } });
+        // [신규] 백업 버튼 이벤트 리스너 추가
+        downloadBackupBtn.addEventListener('click', () => {
+            if (confirm("서버의 전체 데이터를 ZIP 파일로 다운로드하시겠습니까?")) {
+                window.location.href = '/api/backup/download';
+            }
+        });
 
         closeModal.onclick = () => { modal.style.display = "none"; }; window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
         formSelect.addEventListener('change', function() { const selectedOption = this.options[this.selectedIndex]; if (!selectedOption.value) { document.getElementById('main-content').style.display='none'; return; } const subject=selectedOption.dataset.subject, startNumber=parseInt(selectedOption.dataset.startNumber, 10), endNumber=parseInt(selectedOption.dataset.endNumber, 10); document.getElementById('subject').value = subject; const answersContainer = document.getElementById('answers-container'); answersContainer.innerHTML=''; for (let i=startNumber; i <= endNumber; i++) { const newRow=document.createElement('div'); newRow.className='answer-row'; newRow.innerHTML=`<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`; answersContainer.appendChild(newRow); } document.getElementById('main-content').style.display='block'; });

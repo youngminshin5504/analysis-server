@@ -1,5 +1,5 @@
 # --- 필요한 라이브러리 불러오기 ---
-from flask import Flask, request, jsonify, render_template, session, make_response, send_file
+from flask import Flask, request, jsonify, render_template, session, make_response, send_file # send_file 추가
 from flask_session import Session
 import json
 import os
@@ -8,9 +8,8 @@ import glob
 from datetime import datetime, timedelta
 from collections import defaultdict
 import pytz
-import io
-import zipfile
-import pickle
+import io       # [신규] 메모리상에서 파일을 다루기 위함
+import zipfile  # [신규] ZIP 압축을 위함
 
 # --- Flask 앱 초기화 및 설정 ---
 app = Flask(__name__, template_folder='.')
@@ -30,8 +29,6 @@ if not API_SECRET_KEY:
     raise ValueError("필수 환경 변수가 설정되지 않았습니다: API_KEY")
 ADMIN_PASSWORD = "dusrntlf"
 KST = pytz.timezone('Asia/Seoul')
-COMPETENCIES = ('통찰력', '계산력', '논리력', '융합력', '개념', '전략')
-BASE_SCORE = 50.0
 
 def init_all_dbs():
     paths_to_create = [DATA_DIR, STUDENT_DB_DIRECTORY, STUDENT_BACKUP_DIRECTORY, app.config["SESSION_FILE_DIR"]]
@@ -55,123 +52,55 @@ def logout(): session.pop('is_admin', None); return jsonify({"message": "로그�
 @app.route('/api/auth-status', methods=['GET'])
 def auth_status(): return jsonify({"is_admin": is_admin_session()})
 
-# --- 학생 프로필(.pkl) 원격 관리를 위한 API들 ---
-
-def get_profile_path(student_id):
-    s_id_safe = student_id.replace('/', '_')
-    return os.path.join(STUDENT_DB_DIRECTORY, f"{s_id_safe}.pkl")
-
-def get_backup_path(student_id, form_id):
-    today_str = datetime.now(KST).strftime('%Y%m%d')
-    s_id_safe = student_id.replace('/', '_')
-    form_id_safe = form_id.replace('/', '_')
-    return os.path.join(STUDENT_BACKUP_DIRECTORY, f"{s_id_safe}_{form_id_safe}_{today_str}.pkl")
-
-@app.route('/api/profile/initial', methods=['POST'])
-def get_initial_profile():
-    if not is_admin_apikey(): return jsonify({"error": "Unauthorized"}), 401
-    data = request.get_json()
-    student_id, form_id = data.get('student_id'), data.get('form_id')
-    if not student_id or not form_id: return jsonify({"error": "student_id and form_id are required"}), 400
-    main_profile_path = get_profile_path(student_id)
-    backup_path = get_backup_path(student_id, form_id)
-    profile_data = None
-    if os.path.exists(backup_path):
-        print(f"API: '{student_id}'의 오늘자 백업({os.path.basename(backup_path)})을 반환합니다.")
-        with open(backup_path, 'rb') as f: profile_data = pickle.load(f)
-    else:
-        if os.path.exists(main_profile_path):
-            print(f"API: '{student_id}'의 메인 프로필을 로드하여 백업을 생성하고 반환합니다.")
-            with open(main_profile_path, 'rb') as f: profile_data = pickle.load(f)
-        else:
-            print(f"API: '{student_id}'의 신규 프로필을 생성하고 백업 후 반환합니다.")
-            profile_data = {comp: BASE_SCORE for comp in COMPETENCIES}
-        with open(backup_path, 'wb') as f: pickle.dump(profile_data, f)
-    return jsonify(profile_data)
-
-@app.route('/api/profile/save', methods=['POST'])
-def save_final_profile():
-    if not is_admin_apikey(): return jsonify({"error": "Unauthorized"}), 401
-    data = request.get_json()
-    student_id, profile_data = data.get('student_id'), data.get('profile')
-    if not student_id or not profile_data: return jsonify({"error": "student_id and profile are required"}), 400
-    with open(get_profile_path(student_id), 'wb') as f: pickle.dump(profile_data, f)
-    print(f"API: '{student_id}'의 최종 프로필을 저장했습니다.")
-    return jsonify({"message": "Profile saved successfully"})
-
 # --- API 엔드포인트 ---
 @app.route('/')
 def index():
     resp = make_response(render_template('index.html'))
-    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    resp.headers['Pragma'] = 'no-cache'; resp.headers['Expires'] = '-1'
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '-1'
     return resp
 
+# --- [신규] 전체 데이터 백업 다운로드 API ---
 @app.route('/api/backup/download', methods=['GET'])
 def download_full_backup():
-    if not is_admin_session(): return "권한이 없습니다.", 401
+    """ Render Disk에 저장된 모든 데이터를 ZIP 파일로 압축하여 다운로드합니다. (관리자용) """
+    if not is_admin_session():
+        return "권한이 없습니다.", 401
+
     memory_file = io.BytesIO()
+
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        paths_to_backup = [DB_FILE, FORMS_DB_FILE, STUDENT_DB_DIRECTORY]
+        paths_to_backup = [
+            DB_FILE,
+            FORMS_DB_FILE,
+            STUDENT_DB_DIRECTORY 
+        ]
+        
         for path in paths_to_backup:
-            if not os.path.exists(path): continue
-            if os.path.isfile(path): zf.write(path, os.path.basename(path))
+            if not os.path.exists(path):
+                continue
+            
+            if os.path.isfile(path):
+                zf.write(path, os.path.basename(path))
             elif os.path.isdir(path):
-                for root, _, files in os.walk(path):
+                for root, dirs, files in os.walk(path):
                     for file in files:
                         file_path = os.path.join(root, file)
                         archive_name = os.path.relpath(file_path, DATA_DIR)
                         zf.write(file_path, archive_name)
+
     memory_file.seek(0)
+    
     backup_filename = f"backup_{datetime.now(KST).strftime('%Y-%m-%d_%H%M')}.zip"
-    return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name=backup_filename)
 
-@app.route('/api/backups/cleanup', methods=['POST'])
-def cleanup_old_backups():
-    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    if not os.path.exists(STUDENT_BACKUP_DIRECTORY): return jsonify({"message": "백업 디렉터리가 없습니다."})
-    all_backups_by_key = defaultdict(list)
-    all_filenames = os.listdir(STUDENT_BACKUP_DIRECTORY)
-    for filename in all_filenames:
-        if filename.endswith('.pkl'):
-            try:
-                parts = filename[:-4].rsplit('_', 1); date_str = parts[1]; key_part = parts[0]
-                datetime.strptime(date_str, '%Y%m%d')
-                all_backups_by_key[key_part].append((date_str, filename))
-            except (IndexError, ValueError): continue
-    files_to_keep = set()
-    for key, file_list in all_backups_by_key.items():
-        file_list.sort(key=lambda x: x[0], reverse=True)
-        for _, filename in file_list[:2]: files_to_keep.add(filename)
-    deleted_count = 0
-    for filename in all_filenames:
-        if filename.endswith('.pkl') and filename not in files_to_keep:
-            try:
-                os.remove(os.path.join(STUDENT_BACKUP_DIRECTORY, filename)); deleted_count += 1
-            except OSError as e: print(f"오류: 백업 파일 삭제 실패 - {filename}, {e}")
-    return jsonify({"message": f"각 학생/수업별 최신 백업 2개를 제외하고 총 {deleted_count}개의 오래된 백업 파일이 삭제되었습니다."})
-
-@app.route('/api/profiles/list', methods=['GET'])
-def list_student_profiles():
-    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    profiles = [fn[:-4] for fn in os.listdir(STUDENT_DB_DIRECTORY) if fn.endswith('.pkl')] if os.path.exists(STUDENT_DB_DIRECTORY) else []
-    return jsonify(sorted(profiles))
-
-@app.route('/api/profiles/delete', methods=['POST'])
-def delete_student_profile():
-    if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    student_id = request.json.get('student_id')
-    if not student_id: return jsonify({"error": "학생 ID가 필요합니다."}), 400
-    s_id_safe = student_id.replace('/', '_')
-    main_profile_path = os.path.join(STUDENT_DB_DIRECTORY, f"{s_id_safe}.pkl")
-    deleted_files_count = 0
-    if os.path.exists(main_profile_path):
-        os.remove(main_profile_path); deleted_files_count += 1
-    for f in glob.glob(os.path.join(STUDENT_BACKUP_DIRECTORY, f"{s_id_safe}_*.pkl")):
-        os.remove(f); deleted_files_count += 1
-    if deleted_files_count > 0:
-        return jsonify({"message": f"'{student_id}' 학생의 프로필 및 백업 파일 {deleted_files_count}개가 삭제되었습니다."})
-    return jsonify({"error": "해당 학생의 프로필 파일을 찾을 수 없습니다."}), 404
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=backup_filename
+    )
+# --- 여기까지 신규 기능 ---
 
 @app.route('/api/forms', methods=['GET'])
 def get_forms():
@@ -180,9 +109,18 @@ def get_forms():
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: all_forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): return jsonify([])
+
     if is_active_filter:
-        today = datetime.now(KST).date(); start_buffer_date = today + timedelta(days=7)
-        active_forms = [form for form in all_forms if today <= datetime.strptime(form.get('endDate', '2999-12-31'), '%Y-%m-%d').date() and datetime.strptime(form.get('startDate', '1970-01-01'), '%Y-%m-%d').date() <= start_buffer_date]
+        today = datetime.now(KST).date()
+        start_buffer_date = today + timedelta(days=7)
+        active_forms = []
+        for form in all_forms:
+            try:
+                start_date = datetime.strptime(form.get('startDate', '1970-01-01'), '%Y-%m-%d').date()
+                end_date = datetime.strptime(form.get('endDate', '2999-12-31'), '%Y-%m-%d').date()
+                if today <= end_date and start_date <= start_buffer_date:
+                    active_forms.append(form)
+            except (ValueError, TypeError): continue
         return jsonify(active_forms)
     else:
         if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
@@ -202,7 +140,7 @@ def add_form():
 @app.route('/api/forms/<form_id>', methods=['DELETE'])
 def delete_form(form_id):
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    forms = [];
+    forms = []
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): pass
