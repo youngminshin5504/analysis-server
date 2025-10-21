@@ -1,5 +1,5 @@
 # --- 필요한 라이브러리 불러오기 ---
-from flask import Flask, request, jsonify, render_template, session, make_response # make_response 추가
+from flask import Flask, request, jsonify, render_template, session, make_response, send_file # send_file 추가
 from flask_session import Session
 import json
 import os
@@ -8,6 +8,8 @@ import glob
 from datetime import datetime, timedelta
 from collections import defaultdict
 import pytz
+import io       # [신규] 메모리상에서 파일을 다루기 위함
+import zipfile  # [신규] ZIP 압축을 위함
 
 # --- Flask 앱 초기화 및 설정 ---
 app = Flask(__name__, template_folder='.')
@@ -53,15 +55,52 @@ def auth_status(): return jsonify({"is_admin": is_admin_session()})
 # --- API 엔드포인트 ---
 @app.route('/')
 def index():
-    """ 
-    index.html을 렌더링합니다.
-    브라우저가 이 파일을 캐싱하지 않도록 Cache-Control 헤더를 추가합니다.
-    """
     resp = make_response(render_template('index.html'))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '-1'
     return resp
+
+# --- [신규] 전체 데이터 백업 다운로드 API ---
+@app.route('/api/backup/download', methods=['GET'])
+def download_full_backup():
+    """ Render Disk에 저장된 모든 데이터를 ZIP 파일로 압축하여 다운로드합니다. (관리자용) """
+    if not is_admin_session():
+        return "권한이 없습니다.", 401
+
+    memory_file = io.BytesIO()
+
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        paths_to_backup = [
+            DB_FILE,
+            FORMS_DB_FILE,
+            STUDENT_DB_DIRECTORY 
+        ]
+        
+        for path in paths_to_backup:
+            if not os.path.exists(path):
+                continue
+            
+            if os.path.isfile(path):
+                zf.write(path, os.path.basename(path))
+            elif os.path.isdir(path):
+                for root, dirs, files in os.walk(path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        archive_name = os.path.relpath(file_path, DATA_DIR)
+                        zf.write(file_path, archive_name)
+
+    memory_file.seek(0)
+    
+    backup_filename = f"backup_{datetime.now(KST).strftime('%Y-%m-%d_%H%M')}.zip"
+
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=backup_filename
+    )
+# --- 여기까지 신규 기능 ---
 
 @app.route('/api/forms', methods=['GET'])
 def get_forms():
