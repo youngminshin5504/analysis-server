@@ -1,4 +1,7 @@
 Flask
-gunicorn
-pytz
 Flask-Session
+pytz
+gunicorn
+requests
+numpy
+pickle-compat
