@@ -34,10 +34,13 @@
         .checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: 1em; }
         .checkbox-group input[type="checkbox"] { width: auto; }
         .checkbox-group input[type="text"] { display: none; }
+        
+        /* [기존] 데스크탑용 답안 입력 행 스타일 */
         #answers-container .answer-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .answer-row input.question_number { flex: 0 0 70px; background-color: #e9ecef; text-align: center; }
         .answer-row select.is_correct { flex: 0 0 120px; }
         .answer-row input.failed_edge_id { flex: 1 1 auto; }
+
         #calendar { max-width: 1100px; margin: 2em auto; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; }
@@ -45,6 +48,35 @@
         #student-details-container { margin-top: 20px; max-height: 400px; overflow-y: auto; }
         #student-details-container table { width: 100%; border-collapse: collapse; }
         #student-details-container th, #student-details-container td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+
+        /* --- [신규] 모바일 반응형 스타일 추가 --- */
+        /* 화면 폭이 600px 이하일 때 적용될 스타일 */
+        @media (max-width: 600px) {
+            .container {
+                width: 95%;
+                padding: 1em;
+                margin: 1em auto;
+            }
+            /* 답안 입력 행을 세로로 쌓도록 변경 */
+            #answers-container .answer-row {
+                flex-direction: column;
+                align-items: stretch; /* 모든 요소를 꽉 채우도록 정렬 */
+                border: 1px solid #eee;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            /* 세로로 쌓였을 때 고정 너비를 제거하고 100%로 만듦 */
+            .answer-row input.question_number,
+            .answer-row select.is_correct {
+                flex-basis: auto; /* flex-basis 초기화 */
+                width: 100%;
+            }
+            .input-group {
+                flex-direction: column;
+            }
+        }
+        /* --- 여기까지 신규 스타일 --- */
+
     </style>
 </head>
 <body>
