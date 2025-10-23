@@ -110,6 +110,13 @@ def add_form():
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     data = request.get_json()
     new_form_data = data.get('form_data')
+    
+    # --- [버그 수정] ---
+    # new_form_data가 없을 경우, 잘못된 요청으로 간주하고 400 오류를 반환하여 서버 다운 방지
+    if not new_form_data:
+        return jsonify({"error": "잘못된 수업 데이터 형식입니다."}), 400
+    # --- [수정 완료] ---
+
     template_name = data.get('templateName', '').strip()
 
     if data.get('saveAsTemplate') and template_name:
@@ -120,7 +127,7 @@ def add_form():
         templates.append(template_data)
         with open(TEMPLATES_DB_FILE, 'w', encoding='utf-8') as f: json.dump(templates, f, ensure_ascii=False, indent=2)
     
-    series_name_source = data.get('selectedTemplateName') or new_form_data.get('name').split('(')[0].strip()
+    series_name_source = data.get('selectedTemplateName') or new_form_data.get('name', '').split('(')[0].strip()
     new_form_data['course_series'] = re.sub(r'[\s\/:*?"<>|]', '_', series_name_source)
 
     try:
@@ -146,6 +153,8 @@ def update_form_status(form_id):
     with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms, f, ensure_ascii=False, indent=2)
     action = "폐강" if new_status == 'archived' else '복원'
     return jsonify({"message": f"수업이 성공적으로 {action} 처리되었습니다."})
+
+# --- (이하 코드는 이전과 동일하므로 생략 없이 모두 포함) ---
 
 # --- 데이터 제출 및 처리 API ---
 @app.route('/submit', methods=['POST'])
