@@ -65,7 +65,6 @@
         </div>
         <div id="admin-panel" style="display: none;">
             <h2>관리자 모드</h2>
-            
             <div class="sub-panel">
                 <h3>신규 수업 개설</h3>
                 <div class="form-group">
@@ -79,20 +78,16 @@
                 <div class="form-group"><label>수업 활성화 기간 (해당 날짜에만 개설):</label><div class="input-group"><input type="date" id="new-form-start-date"><input type="date" id="new-form-end-date"></div></div>
                 <button id="add-form-btn" style="margin-top: 1em;">수업 개설하기</button>
             </div>
-            
             <div class="sub-panel">
                 <h3>개설된 수업 목록</h3><div id="current-forms-container"></div>
             </div>
-
             <hr>
             <h2>제출 데이터 조회</h2><div id='calendar'></div><hr>
-            
             <h2>학생 데이터 관리 (매우 주의!)</h2>
             <div class="sub-panel">
                 <div class="form-group"><label for="student-select">관리할 학생 선택:</label><select id="student-select"><option value="">-- 학생을 선택하세요 --</option></select></div>
                 <button id="delete-student-data-btn" class="delete-btn">선택 학생의 모든 프로필(.pkl) 영구 삭제</button>
             </div>
-            
             <hr>
             <h2>전체 데이터 백업</h2>
             <button id="download-backup-btn">백업 파일 다운로드 시작</button>
@@ -116,15 +111,20 @@
                 const opts = { method, headers: {} };
                 if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
                 const res = await fetch(url, opts);
-                if (res.status === 401) { 
-                    alert('인증이 만료되었거나 권한이 없습니다. 다시 로그인해주세요.'); 
-                    logout(); 
-                    return {success: false}; 
+                if (res.status === 401) { alert('인증이 만료되었거나 권한이 없습니다. 다시 로그인해주세요.'); logout(); return {success: false}; }
+                // [수정] 500번대 에러가 발생했을 때 JSON 파싱을 시도하지 않도록 수정
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        throw new Error(errorJson.error || '작업 실패');
+                    } catch (e) {
+                        throw new Error(errorText || '알 수 없는 서버 오류');
+                    }
                 }
                 const result = await res.json();
-                if (!res.ok) throw new Error(result.error || '작업 실패');
                 return {success: true, data: result};
-            } catch (error) { console.error(error); alert(error.message); return {success: false, error: error.message}; }
+            } catch (error) { console.error('API 요청 오류:', error); alert(error.message); return {success: false, error: error.message}; }
         }
 
         async function loadActiveFormsForAssistant() {
@@ -154,7 +154,6 @@
             if(result.success) {
                 const groupedForms = result.data;
                 formsCache = groupedForms;
-                
                 container.innerHTML = '';
                 if(groupedForms.length === 0) { container.textContent = "현재 개설된 수업이 없습니다."; }
                 else {
@@ -170,7 +169,6 @@
                         container.appendChild(item);
                     });
                 }
-                
                 reuseFormSelect.innerHTML = '<option value="">-- 직접 입력 --</option>';
                 groupedForms.forEach(group => {
                     const opt = document.createElement('option');
@@ -199,13 +197,14 @@
                 const row = tbody.insertRow();
                 const studentIdentifier = `${item.student_name}(${item.phone_suffix})`;
                 const statusText = item.status === 'processed' ? `완료` : '대기';
+                // [버그 수정] 재계산 버튼에 submission-id 추가
                 row.innerHTML = `
                     <td>${item.id}</td>
                     <td>${studentIdentifier}</td>
                     <td>${statusText}</td>
                     <td>${new Date(item.submitted_at).toLocaleString('ko-KR')}</td>
                     <td>
-                        <button class="recalc-btn" data-student-id="${item.student_id}" data-date="${dateStr}">재계산</button>
+                        <button class="recalc-btn" data-student-id="${item.student_id}" data-date="${dateStr}" data-submission-id="${item.id}">재계산</button>
                         <button class="edit-btn" data-id="${item.id}">수정</button>
                         <button class="delete-record-btn" data-id="${item.id}">삭제</button>
                     </td>`;
@@ -243,6 +242,7 @@
                     toggleAdminBtn.textContent = '로그아웃';
                     loadAdminData();
                     if (!calendar) { initializeCalendar(); }
+                    calendar.refetchEvents();
                     calendar.render();
                 } else { alert("비밀번호가 틀렸습니다."); }
             }
@@ -268,7 +268,7 @@
                 events: async (fetchInfo, successCallback, failureCallback) => {
                     const result = await handleApiRequest(`/api/calendar/events?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`, 'GET');
                     if (result.success) { successCallback(result.data); } 
-                    else { console.error('달력 로딩 실패:', result.error); failureCallback(new Error(result.error), []); }
+                    else { console.error('달력 로딩 실패:', result.error); failureCallback(new Error(result.error)); }
                 },
                 eventClick: async function(info) {
                     info.jsEvent.preventDefault();
@@ -302,6 +302,7 @@
             }
         });
 
+        // [버그 수정] 서버와 호환되는 데이터 구조로 전송
         document.getElementById('add-form-btn').addEventListener('click', async () => {
             const newForm = {
                 id: `form_${Date.now()}`,
@@ -315,6 +316,7 @@
             if (!newForm.name || !newForm.subject || !newForm.startNumber || !newForm.endNumber || !newForm.startDate || !newForm.endDate) {
                 alert('모든 항목을 올바르게 입력해주세요.'); return;
             }
+            // [수정] 서버의 add_form이 평평한 구조를 받도록 변경되었으므로, newForm 객체를 직접 전송
             const result = await handleApiRequest('/api/forms', 'POST', newForm);
             if(result.success) {
                 alert(result.data.message);
@@ -381,8 +383,10 @@
             if (button.classList.contains('recalc-btn')) {
                 const studentId = button.dataset.studentId;
                 const startDate = button.dataset.date;
+                // [버그 수정] 재계산 버튼에서 data-submission-id 속성 값을 가져옴
+                const recalcSubmissionId = button.dataset.submissionId; 
                 if(confirm(`'${studentId}' 학생의 ${startDate} 날짜부터의 모든 기록을 재계산하시겠습니까?`)) {
-                    const result = await handleApiRequest('/api/recalculate-from-date', 'POST', { student_id: studentId, start_date: startDate });
+                    const result = await handleApiRequest('/api/recalculate-from-date', 'POST', { student_id: studentId, start_date: startDate, submission_id: parseInt(recalcSubmissionId) });
                     if(result.success) { alert(result.data.message); detailsModal.style.display = 'none'; }
                 }
             } else if (button.classList.contains('edit-btn')) {
