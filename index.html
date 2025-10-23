@@ -104,7 +104,7 @@
 
     <script>
         const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), studentSelect = document.getElementById('student-select'), reuseFormSelect = document.getElementById('reuse-form-select');
-        let calendar = null; // [변경] calendar 변수를 null로 초기화
+        let calendar = null;
         let formsCache=[];
         const detailsModal = document.getElementById('detailsModal');
         const classDetailsModal = document.getElementById('classDetailsModal');
@@ -117,7 +117,6 @@
                 if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
                 const res = await fetch(url, opts);
                 if (res.status === 401) { 
-                    // [변경] 401 에러 시 logout() 함수 호출
                     alert('인증이 만료되었거나 권한이 없습니다. 다시 로그인해주세요.'); 
                     logout(); 
                     return {success: false}; 
@@ -131,11 +130,14 @@
         async function loadActiveFormsForAssistant() {
             const result = await handleApiRequest('/api/forms?active=true', 'GET');
             if(result.success) {
-                formSelect.innerHTML = '<option value="">-- 수업 선택 --</option>';
+                formSelect.innerHTML = '<option value="">-- 먼저 수업을 선택하세요 --</option>';
                 result.data.forEach(f => {
                     const o = document.createElement('option');
-                    o.value = f.id; o.textContent = `${f.name} (${f.startDate})`;
-                    o.dataset.subject = f.subject; o.dataset.startNumber = f.startNumber; o.dataset.endNumber = f.endNumber;
+                    o.value = f.id; 
+                    o.textContent = `${f.name} (${f.startDate})`;
+                    o.dataset.subject = f.subject;
+                    o.dataset.startNumber = f.startNumber;
+                    o.dataset.endNumber = f.endNumber;
                     formSelect.appendChild(o);
                 });
             }
@@ -240,11 +242,7 @@
                     adminPanel.style.display = 'block'; assistantPanel.style.display = 'none';
                     toggleAdminBtn.textContent = '로그아웃';
                     loadAdminData();
-
-                    // [변경] 로그인 성공 시에만 달력 생성
-                    if (!calendar) {
-                        initializeCalendar();
-                    }
+                    if (!calendar) { initializeCalendar(); }
                     calendar.render();
                 } else { alert("비밀번호가 틀렸습니다."); }
             }
@@ -255,20 +253,13 @@
             adminPanel.style.display = 'none'; assistantPanel.style.display = 'block';
             toggleAdminBtn.textContent = '관리자 모드';
             loadActiveFormsForAssistant();
-            
-            // [변경] 로그아웃 시 달력 인스턴스 파괴
-            if (calendar) {
-                calendar.destroy();
-                calendar = null;
-            }
+            if (calendar) { calendar.destroy(); calendar = null; }
         }
 
-        // [변경] 페이지 로딩 시에는 달력을 초기화하지 않음
         document.addEventListener('DOMContentLoaded', function() {
             loadActiveFormsForAssistant();
         });
         
-        // [신규] 달력 초기화 함수
         function initializeCalendar() {
             const calendarEl = document.getElementById('calendar');
             calendar = new FullCalendar.Calendar(calendarEl, {
@@ -276,13 +267,8 @@
                 headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth' },
                 events: async (fetchInfo, successCallback, failureCallback) => {
                     const result = await handleApiRequest(`/api/calendar/events?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}`, 'GET');
-                    if (result.success) {
-                        successCallback(result.data);
-                    } else {
-                        // 에러 발생 시 빈 배열을 전달하여 TypeError 방지
-                        console.error('달력 로딩 실패:', result.error);
-                        failureCallback(new Error(result.error), []);
-                    }
+                    if (result.success) { successCallback(result.data); } 
+                    else { console.error('달력 로딩 실패:', result.error); failureCallback(new Error(result.error), []); }
                 },
                 eventClick: async function(info) {
                     info.jsEvent.preventDefault();
@@ -412,15 +398,96 @@
             }
         });
 
-        document.getElementById('delete-student-data-btn').addEventListener('click', async () => { /* 이전과 동일 */ });
-        document.getElementById('download-backup-btn').addEventListener('click', () => { /* 이전과 동일 */ });
-        formSelect.addEventListener('change', function() { /* 이전과 동일 */ });
-        document.getElementById('submission-form').addEventListener('submit', async function(e) { /* 이전과 동일 */ });
+        document.getElementById('delete-student-data-btn').addEventListener('click', async () => {
+            const studentId = studentSelect.value;
+            if (!studentId) { alert('먼저 삭제할 학생을 선택해주세요.'); return; }
+            const studentName = studentId.split('(')[0];
+            const confirmation = prompt(`[경고] '${studentId}' 학생의 모든 역량 데이터(.pkl 파일)를 영구 삭제하려면, 학생의 이름('${studentName}')을 정확히 입력하세요:`);
+            if (confirmation === studentName) {
+                if (confirm(`최종 확인: '${studentId}' 학생의 데이터를 정말로 삭제하시겠습니까?`)) {
+                    const result = await handleApiRequest('/api/student-data', 'DELETE', { student_id: studentId });
+                    if(result.success) { alert(result.data.message); studentSelect.value = ''; }
+                }
+            } else if (confirmation !== null) {
+                alert('입력한 이름이 일치하지 않아 작업을 취소합니다.');
+            }
+        });
+
+        document.getElementById('download-backup-btn').addEventListener('click', () => {
+            if (confirm("서버의 전체 데이터를 ZIP 파일로 다운로드하시겠습니까?")) { window.location.href = '/api/backup/download'; }
+        });
+
+        formSelect.addEventListener('change', function() {
+            const mainContent = document.getElementById('main-content');
+            try {
+                const selectedOption = this.options[this.selectedIndex];
+                if (!selectedOption || !selectedOption.value) {
+                    mainContent.style.display = 'none';
+                    return;
+                }
+                const { subject, startNumber, endNumber } = selectedOption.dataset;
+                if (subject === undefined || startNumber === undefined || endNumber === undefined) {
+                    console.error("선택된 수업 옵션에 필수 데이터(subject, startNumber, endNumber)가 없습니다.");
+                    alert("선택한 수업 정보가 올바르지 않습니다. 관리자에게 문의하세요.");
+                    mainContent.style.display = 'none';
+                    return;
+                }
+                document.getElementById('subject').value = subject;
+                const answersContainer = document.getElementById('answers-container');
+                answersContainer.innerHTML = '';
+                for (let i = parseInt(startNumber, 10); i <= parseInt(endNumber, 10); i++) {
+                    const newRow = document.createElement('div');
+                    newRow.className = 'answer-row';
+                    newRow.innerHTML = `<input type="text" class="question_number" value="${i}" readonly><select class="is_correct"><option value="true">정답</option><option value="false">오답</option></select><input type="text" class="failed_edge_id" placeholder="오답일 경우, 틀린 부분 기술">`;
+                    answersContainer.appendChild(newRow);
+                }
+                mainContent.style.display = 'block';
+            } catch (error) {
+                console.error("수업 선택 처리 중 오류 발생:", error);
+                alert("수업을 선택하는 중 오류가 발생했습니다. 페이지를 새로고침하거나 관리자에게 문의하세요.");
+                mainContent.style.display = 'none';
+            }
+        });
+
+        document.getElementById('submission-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const formId = document.getElementById('form-select').value;
+            if (!formId) { alert("먼저 수업을 선택해주세요."); return; }
+            const studentData = {
+                form_id: formId,
+                student_name: document.getElementById('student_name').value,
+                phone_suffix: document.getElementById('phone_suffix').value,
+                subject: document.getElementById('subject').value,
+                answers: Array.from(document.querySelectorAll('.answer-row')).map(r => ({
+                    "Question Number": r.querySelector('.question_number').value,
+                    "is_correct": r.querySelector('.is_correct').value === 'true',
+                    "failed_edge_id": r.querySelector('.failed_edge_id').value
+                }))
+            };
+            const result = await handleApiRequest('/submit', 'POST', studentData);
+            const msgDiv = document.getElementById('message');
+            if(result.success) {
+                msgDiv.textContent = result.data.message; msgDiv.className = 'success';
+                document.getElementById('main-content').style.display = 'none';
+                document.getElementById('form-select').value = '';
+                this.reset();
+                if(calendar) calendar.refetchEvents();
+            } else {
+                msgDiv.textContent = '제출 오류: ' + (result.error || '알 수 없는 오류');
+                msgDiv.className = 'error';
+            }
+            msgDiv.style.display = 'block';
+            setTimeout(() => { msgDiv.style.display = 'none'; }, 3000);
+        });
         
         document.querySelectorAll('.modal .close').forEach(el => {
             el.onclick = () => { el.closest('.modal').style.display = "none"; }
         });
-        window.onclick = (e) => { if (e.target.classList.contains('modal')) { e.target.style.display = "none"; } };
+        window.onclick = (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = "none";
+            }
+        };
     </script>
 </body>
 </html>
