@@ -36,7 +36,6 @@ def init_all_dbs():
     paths_to_create = [DATA_DIR, app.config["SESSION_FILE_DIR"]]
     for p in paths_to_create:
         if not os.path.exists(p): os.makedirs(p)
-    # [변경] 템플릿 DB는 더 이상 사용되지 않으므로 초기화에서 제외
     for db_path in [DB_FILE, FORMS_DB_FILE]:
         if not os.path.exists(db_path):
             with open(db_path, 'w', encoding='utf-8') as f: json.dump([], f, ensure_ascii=False, indent=2)
@@ -72,7 +71,7 @@ def index():
     resp.headers['Expires'] = '-1'
     return resp
 
-# --- [변경] 수업(Form) 관리 API ---
+# --- 수업(Form) 관리 API ---
 @app.route('/api/forms', methods=['GET'])
 def get_forms():
     is_active_filter = request.args.get('active', 'false').lower() == 'true'
@@ -80,7 +79,6 @@ def get_forms():
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: all_forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): return jsonify([])
-
     if is_active_filter:
         today = datetime.now(KST).date()
         active_forms = []
@@ -94,47 +92,33 @@ def get_forms():
         return jsonify(sorted(active_forms, key=lambda x: x['startDate'], reverse=True))
     else:
         if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-        
-        # [신규 로직] 관리자에게는 수업 이름(name)으로 그룹화된 목록을 반환
         grouped_forms = []
         all_forms.sort(key=lambda x: x['name'])
         for name, group in groupby(all_forms, key=lambda x: x['name']):
             group_list = list(group)
             if group_list:
                 first_item = group_list[0]
-                grouped_forms.append({
-                    "name": name,
-                    "subject": first_item.get('subject'),
-                    "instance_count": len(group_list)
-                })
+                grouped_forms.append({ "name": name, "subject": first_item.get('subject'), "instance_count": len(group_list) })
         return jsonify(sorted(grouped_forms, key=lambda x: x['name']))
 
 @app.route('/api/forms', methods=['POST'])
 def add_form():
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    
-    # [변경] 새로운 index.html이 보내는 평평한(flat) 데이터 구조를 직접 받음
     new_form_data = request.get_json()
     if not new_form_data or not all(k in new_form_data for k in ['name', 'subject', 'startNumber', 'endNumber', 'startDate', 'endDate']):
         return jsonify({"error": "수업 데이터 형식이 올바르지 않습니다."}), 400
-
-    # `course_series`를 수업 이름(name)으로 설정
     series_name = new_form_data.get('name', 'default_series')
     new_form_data['course_series'] = re.sub(r'[\s\/:*?"<>|]', '_', series_name)
-
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: forms = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): forms = []
-    
     forms.append(new_form_data)
     with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms, f, ensure_ascii=False, indent=2)
     return jsonify({"message": "새로운 수업이 성공적으로 개설되었습니다."}), 201
 
-# --- [신규] 이름으로 수업을 조회/삭제하는 API ---
 @app.route('/api/forms/by-name', methods=['GET', 'DELETE'])
 def handle_forms_by_name():
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
-    
     if request.method == 'GET':
         name = request.args.get('name')
         if not name: return jsonify({"error": "수업 이름이 필요합니다."}), 400
@@ -144,7 +128,6 @@ def handle_forms_by_name():
             return jsonify(sorted(instances, key=lambda x: x['startDate'], reverse=True))
         except (FileNotFoundError, json.JSONDecodeError):
             return jsonify([])
-
     if request.method == 'DELETE':
         name = request.json.get('name')
         if not name: return jsonify({"error": "수업 이름이 필요합니다."}), 400
@@ -155,8 +138,12 @@ def handle_forms_by_name():
                 return jsonify({"error": "해당 이름의 수업 그룹을 찾을 수 없습니다."}), 404
             with open(FORMS_DB_FILE, 'w', encoding='utf-8') as f: json.dump(forms_after_delete, f, ensure_ascii=False, indent=2)
             return jsonify({"message": f"'{name}' 수업 그룹이 성공적으로 삭제되었습니다."})
+        # --- [버그 수정] ---
+        # 누락되었던 except 블록 추가
+        except (FileNotFoundError, json.JSONDecodeError):
+            return jsonify({"error": "수업 데이터 파일을 처리하는 중 오류가 발생했습니다."}), 500
+        # --- [수정 완료] ---
 
-# --- [신규] ID로 특정 수업 인스턴스만 삭제하는 API ---
 @app.route('/api/forms/<form_id>', methods=['DELETE'])
 def delete_form_instance(form_id):
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
@@ -170,7 +157,7 @@ def delete_form_instance(form_id):
     except (FileNotFoundError, json.JSONDecodeError):
         return jsonify({"error": "수업 데이터를 찾을 수 없습니다."}), 404
 
-# --- (이하 코드는 이전 버전과 호환되므로 거의 동일합니다) ---
+# --- 데이터 제출 및 처리 API ---
 @app.route('/submit', methods=['POST'])
 def submit_data():
     data = request.get_json()
@@ -200,7 +187,6 @@ def submit_data():
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     return jsonify({"message": "데이터가 성공적으로 제출되었습니다.", "id": data['id']}), 201
 
-# (pending-data, mark-processed, pkl 관리, 재계산, 데이터 조회 등 나머지 모든 API는 이전과 100% 동일하게 작동합니다)
 @app.route('/pending-data', methods=['GET'])
 def get_pending_data():
     if not is_admin_apikey(): return jsonify({"error": "권한이 없습니다."}), 401
@@ -224,6 +210,7 @@ def mark_processed():
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     return jsonify({"message": f"{len(processed_ids)}개 항목이 처리 완료로 표시되었습니다."})
 
+# --- 학생 데이터(.pkl) 관리 API ---
 @app.route('/api/student-profile/initial', methods=['POST'])
 def get_initial_student_profile():
     if not is_admin_apikey(): return jsonify({"error": "권한이 없습니다."}), 401
@@ -273,6 +260,7 @@ def delete_student_data():
     else:
         return jsonify({"error": f"'{student_id}' 학생의 데이터를 찾을 수 없습니다."}), 404
 
+# --- 재계산 API ---
 @app.route('/api/recalculate-from-date', methods=['POST'])
 def recalculate_from_date():
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
@@ -319,18 +307,20 @@ def recalculate_from_date():
     with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(db_data, f, ensure_ascii=False, indent=2)
     return jsonify({"message": f"'{student_id}' 학생의 '{course_series}' 수업 시리즈 데이터가 {start_date_str}부터 재처리 대기 상태로 변경되었습니다. 총 {reprocess_count}개 기록이 재설정되었습니다."})
 
+# --- 데이터 조회 및 기타 관리 API ---
 @app.route('/api/calendar/events', methods=['GET'])
 def get_calendar_events():
     if not is_admin_session(): return jsonify({"error": "권한이 없습니다."}), 401
     start_str, end_str = request.args.get('start'), request.args.get('end'); events_to_show = defaultdict(set)
     try:
         with open(FORMS_DB_FILE, 'r', encoding='utf-8') as f: 
-            forms_info = {form['id']: form.get('name', 'N/A') for form in json.load(f)}
+            forms_info = {form['id']: f"{form.get('name')} ({form.get('startDate')})" for form in json.load(f)}
         with open(DB_FILE, 'r', encoding='utf-8') as f: db_data = json.load(f)
         for item in db_data:
             try:
-                if start_str <= datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d') < end_str:
-                    if item.get('form_id') in forms_info: events_to_show[datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')].add(item.get('form_id'))
+                item_date_str = datetime.fromisoformat(item.get('submitted_at')).astimezone(KST).strftime('%Y-%m-%d')
+                if start_str <= item_date_str < end_str:
+                    if item.get('form_id') in forms_info: events_to_show[item_date_str].add(item.get('form_id'))
             except: continue
     except: pass
     calendar_events = [{"title": forms_info.get(f_id, "알 수 없는 수업"), "start": d_str, "extendedProps": {"formId": f_id}} for d_str, f_ids in events_to_show.items() for f_id in f_ids]
