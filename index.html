@@ -15,10 +15,8 @@
         button { padding: 0.8em 1.5em; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #6c757d; cursor: not-allowed; }
-        .delete-btn, .edit-btn, .delete-record-btn, .archive-btn, .restore-btn, .recalc-btn { font-size: 0.8em; padding: 0.4em 0.8em; margin-left: 5px; }
+        .delete-btn, .edit-btn, .delete-record-btn, .recalc-btn { font-size: 0.8em; padding: 0.4em 0.8em; margin-left: 5px; }
         .delete-btn, .delete-record-btn { background-color: #dc3545; }
-        .archive-btn { background-color: #ffc107; color: black; }
-        .restore-btn { background-color: #28a745; }
         .recalc-btn { background-color: #6f42c1;}
         .edit-btn { background-color: #17a2b8; }
         hr { border: 0; height: 1px; background-color: #eee; margin: 2em 0; }
@@ -30,17 +28,10 @@
         .admin-controls { text-align: right; margin-bottom: 1em; }
         .input-group { display: flex; gap: 10px; }
         .sub-panel { border: 1px solid #ddd; padding: 1em; margin-top: 1em; border-radius: 5px; }
-        #archived-forms-panel { display: none; }
-        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: 1em; }
-        .checkbox-group input[type="checkbox"] { width: auto; }
-        .checkbox-group input[type="text"] { display: none; }
-        
-        /* [기존] 데스크탑용 답안 입력 행 스타일 */
         #answers-container .answer-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
         .answer-row input.question_number { flex: 0 0 70px; background-color: #e9ecef; text-align: center; }
         .answer-row select.is_correct { flex: 0 0 120px; }
         .answer-row input.failed_edge_id { flex: 1 1 auto; }
-
         #calendar { max-width: 1100px; margin: 2em auto; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px; }
@@ -48,35 +39,12 @@
         #student-details-container { margin-top: 20px; max-height: 400px; overflow-y: auto; }
         #student-details-container table { width: 100%; border-collapse: collapse; }
         #student-details-container th, #student-details-container td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-
-        /* --- [신규] 모바일 반응형 스타일 추가 --- */
-        /* 화면 폭이 600px 이하일 때 적용될 스타일 */
         @media (max-width: 600px) {
-            .container {
-                width: 95%;
-                padding: 1em;
-                margin: 1em auto;
-            }
-            /* 답안 입력 행을 세로로 쌓도록 변경 */
-            #answers-container .answer-row {
-                flex-direction: column;
-                align-items: stretch; /* 모든 요소를 꽉 채우도록 정렬 */
-                border: 1px solid #eee;
-                padding: 10px;
-                border-radius: 5px;
-            }
-            /* 세로로 쌓였을 때 고정 너비를 제거하고 100%로 만듦 */
-            .answer-row input.question_number,
-            .answer-row select.is_correct {
-                flex-basis: auto; /* flex-basis 초기화 */
-                width: 100%;
-            }
-            .input-group {
-                flex-direction: column;
-            }
+            .container { width: 95%; padding: 1em; margin: 1em auto; }
+            #answers-container .answer-row { flex-direction: column; align-items: stretch; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
+            .answer-row input.question_number, .answer-row select.is_correct { flex-basis: auto; width: 100%; }
+            .input-group { flex-direction: column; }
         }
-        /* --- 여기까지 신규 스타일 --- */
-
     </style>
 </head>
 <body>
@@ -99,23 +67,21 @@
             
             <div class="sub-panel">
                 <h3>신규 수업 개설</h3>
-                <div class="form-group"><label for="template-select">템플릿 불러오기 (선택 사항):</label><select id="template-select"><option value="">-- 직접 입력 --</option></select></div>
+                <!-- [통합] '템플릿'을 '최근 수업 설정'으로 변경 -->
+                <div class="form-group">
+                    <label for="reuse-form-select">최근 수업 설정 불러오기 (선택 사항):</label>
+                    <select id="reuse-form-select"><option value="">-- 직접 입력 --</option></select>
+                </div>
                 <hr style="margin: 1em 0;">
                 <div class="form-group"><label for="new-form-name">수업 이름 (날짜 등 포함):</label><input type="text" id="new-form-name"></div>
-                <div class="form-group"><label for="new-form-subject">과목명 (템플릿 미선택 시 입력):</label><input type="text" id="new-form-subject"></div>
+                <div class="form-group"><label for="new-form-subject">과목명:</label><input type="text" id="new-form-subject"></div>
                 <div class="form-group"><label>문제 번호 범위:</label><div class="input-group"><input type="number" id="new-form-start" min="1" placeholder="시작"><input type="number" id="new-form-end" min="1" placeholder="끝"></div></div>
                 <div class="form-group"><label>수업 활성화 기간:</label><div class="input-group"><input type="date" id="new-form-start-date"><input type="date" id="new-form-end-date"></div></div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="save-as-template-check"><label for="save-as-template-check">이 설정을 새 템플릿으로 저장</label>
-                    <input type="text" id="new-template-name" placeholder="저장할 템플릿 이름 입력">
-                </div>
                 <button id="add-form-btn" style="margin-top: 1em;">수업 개설하기</button>
             </div>
             
             <div class="sub-panel">
-                <h3>현재 및 예정된 수업 목록</h3><div id="current-forms-container"></div><hr>
-                <button id="toggle-archived-forms">폐강된 수업 보기</button>
-                <div id="archived-forms-panel" style="display: none;"><div id="archived-forms-container"></div></div>
+                <h3>현재 및 예정된 수업 목록</h3><div id="current-forms-container"></div>
             </div>
 
             <hr>
@@ -137,8 +103,8 @@
     <div id="detailsModal" class="modal"><div class="modal-content"><span class="close">&times;</span><h2 id="modalDateTitle"></h2><div id="student-details-container"></div></div></div>
 
     <script>
-        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), modal = document.getElementById('detailsModal'), studentDetailsContainer = document.getElementById('student-details-container'), studentSelect = document.getElementById('student-select'), templateSelect = document.getElementById('template-select');
-        let calendar, templatesCache=[];
+        const assistantPanel = document.getElementById('assistant-panel'), adminPanel = document.getElementById('admin-panel'), toggleAdminBtn = document.getElementById('toggle-admin-mode'), formSelect = document.getElementById('form-select'), modal = document.getElementById('detailsModal'), studentDetailsContainer = document.getElementById('student-details-container'), studentSelect = document.getElementById('student-select'), reuseFormSelect = document.getElementById('reuse-form-select');
+        let calendar, formsCache=[];
 
         async function handleApiRequest(url, method, body) {
             try {
@@ -166,38 +132,36 @@
         }
         
         async function loadAdminData() {
-            loadAllFormsForAdmin('active', document.getElementById('current-forms-container'));
-            loadCourseTemplates();
+            loadAllFormsForAdmin();
             loadAllStudents();
             if (calendar) calendar.refetchEvents();
         }
 
-        async function loadCourseTemplates() {
-            const result = await handleApiRequest('/api/course-templates', 'GET');
+        async function loadAllFormsForAdmin() {
+            const container = document.getElementById('current-forms-container');
+            const result = await handleApiRequest('/api/forms', 'GET');
             if(result.success) {
-                templatesCache = result.data;
-                templateSelect.innerHTML = '<option value="">-- 직접 입력 --</option>';
-                templatesCache.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.id; opt.textContent = t.name;
-                    templateSelect.appendChild(opt);
-                });
-            }
-        }
-
-        async function loadAllFormsForAdmin(status, container) {
-            const result = await handleApiRequest(`/api/forms?status=${status}`, 'GET');
-            if(result.success) {
+                formsCache = result.data; // [통합] 불러온 수업 목록을 캐시에 저장
+                
+                // 현재 수업 목록 렌더링
                 container.innerHTML = '';
-                if(result.data.length === 0) { container.textContent = "해당하는 수업이 없습니다."; return; }
-                result.data.forEach(f => {
-                    const item = document.createElement('div');
-                    item.className = 'form-list-item';
-                    const actionBtn = status === 'active' 
-                        ? `<button class="archive-btn" data-id="${f.id}">폐강</button>`
-                        : `<button class="restore-btn" data-id="${f.id}">복원</button>`;
-                    item.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, 활성화: ${f.startDate} ~ ${f.endDate})</span>${actionBtn}`;
-                    container.appendChild(item);
+                if(formsCache.length === 0) { container.textContent = "현재 개설된 수업이 없습니다."; }
+                else {
+                    formsCache.forEach(f => {
+                        const item = document.createElement('div');
+                        item.className = 'form-list-item';
+                        item.innerHTML = `<span><strong>${f.name}</strong> (${f.subject}, 활성화: ${f.startDate} ~ ${f.endDate})</span><button class="delete-btn" data-id="${f.id}">삭제</button>`;
+                        container.appendChild(item);
+                    });
+                }
+
+                // [통합] '최근 수업 설정 불러오기' 드롭다운 채우기
+                reuseFormSelect.innerHTML = '<option value="">-- 직접 입력 --</option>';
+                formsCache.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.id;
+                    opt.textContent = `${f.name} (${f.startDate})`;
+                    reuseFormSelect.appendChild(opt);
                 });
             }
         }
@@ -296,88 +260,68 @@
             loadActiveFormsForAssistant();
         });
 
-        templateSelect.addEventListener('change', function() {
+        reuseFormSelect.addEventListener('change', function() {
             const selectedId = this.value;
-            const template = templatesCache.find(t => t.id === selectedId);
+            const form = formsCache.find(f => f.id === selectedId);
+            
+            const nameInput = document.getElementById('new-form-name');
             const subjectInput = document.getElementById('new-form-subject');
-            if(template) {
-                document.getElementById('new-form-name').value = template.name + ` (${new Date().toLocaleDateString('ko-KR')})`;
-                subjectInput.value = template.subject;
-                subjectInput.readOnly = true; subjectInput.style.backgroundColor = '#e9ecef';
-                document.getElementById('new-form-start').value = template.startNumber;
-                document.getElementById('new-form-end').value = template.endNumber;
-            } else {
-                document.getElementById('new-form-name').value = '';
-                subjectInput.value = '';
-                subjectInput.readOnly = false; subjectInput.style.backgroundColor = 'white';
-                document.getElementById('new-form-start').value = '';
-                document.getElementById('new-form-end').value = '';
-            }
-        });
+            const startInput = document.getElementById('new-form-start');
+            const endInput = document.getElementById('new-form-end');
 
-        document.getElementById('save-as-template-check').addEventListener('change', function() {
-            document.getElementById('new-template-name').style.display = this.checked ? 'block' : 'none';
+            if(form) {
+                nameInput.value = form.name.replace(/\(\d{4}.\s\d{1,2}.\s\d{1,2}.\)/, `(${new Date().toLocaleDateString('ko-KR')})`);
+                subjectInput.value = form.subject;
+                startInput.value = form.startNumber;
+                endInput.value = form.endNumber;
+            } else {
+                nameInput.value = '';
+                subjectInput.value = '';
+                startInput.value = '';
+                endInput.value = '';
+            }
         });
 
         document.getElementById('add-form-btn').addEventListener('click', async () => {
-            const name = document.getElementById('new-form-name').value.trim();
-            const subject = document.getElementById('new-form-subject').value.trim();
-            const startNum = document.getElementById('new-form-start').value;
-            const endNum = document.getElementById('new-form-end').value;
-            const startDate = document.getElementById('new-form-start-date').value;
-            const endDate = document.getElementById('new-form-end-date').value;
-            if (!name || !subject || !startNum || !endNum || !startDate || !endDate) { alert('모든 항목을 올바르게 입력해주세요.'); return; }
-            const saveAsTemplate = document.getElementById('save-as-template-check').checked;
-            const templateName = document.getElementById('new-template-name').value.trim();
-            if(saveAsTemplate && !templateName) { alert('저장할 템플릿 이름을 입력해주세요.'); return; }
-            const payload = {
-                form_data: { id: `form_${Date.now()}`, name, subject, startNumber: parseInt(startNum), endNumber: parseInt(endNum), startDate, endDate },
-                saveAsTemplate, templateName
+            const newForm = {
+                id: `form_${Date.now()}`,
+                name: document.getElementById('new-form-name').value.trim(),
+                subject: document.getElementById('new-form-subject').value.trim(),
+                startNumber: parseInt(document.getElementById('new-form-start').value),
+                endNumber: parseInt(document.getElementById('new-form-end').value),
+                startDate: document.getElementById('new-form-start-date').value,
+                endDate: document.getElementById('new-form-end-date').value
             };
-            const result = await handleApiRequest('/api/forms', 'POST', payload);
+            if (!newForm.name || !newForm.subject || !newForm.startNumber || !newForm.endNumber || !newForm.startDate || !newForm.endDate) {
+                alert('모든 항목을 올바르게 입력해주세요.'); return;
+            }
+            const result = await handleApiRequest('/api/forms', 'POST', newForm);
             if(result.success) {
                 alert(result.data.message);
-                document.getElementById('new-form-name').value = ''; document.getElementById('new-form-subject').value = '';
-                document.getElementById('new-form-start').value = ''; document.getElementById('new-form-end').value = '';
-                document.getElementById('new-form-start-date').value = ''; document.getElementById('new-form-end-date').value = '';
-                document.getElementById('save-as-template-check').checked = false;
-                document.getElementById('new-template-name').style.display = 'none'; document.getElementById('new-template-name').value = '';
-                templateSelect.value = '';
-                loadAllFormsForAdmin('active', document.getElementById('current-forms-container'));
-                if (saveAsTemplate) loadCourseTemplates();
+                document.getElementById('new-form-name').value = '';
+                document.getElementById('new-form-subject').value = '';
+                document.getElementById('new-form-start').value = '';
+                document.getElementById('new-form-end').value = '';
+                document.getElementById('new-form-start-date').value = '';
+                document.getElementById('new-form-end-date').value = '';
+                reuseFormSelect.value = '';
+                loadAllFormsForAdmin();
                 if(calendar) calendar.refetchEvents();
             }
         });
-
+        
         document.getElementById('current-forms-container').addEventListener('click', async (e) => {
-            if (e.target.classList.contains('archive-btn')) {
+            if (e.target.classList.contains('delete-btn')) {
                 const formId = e.target.dataset.id;
-                if(confirm('이 수업을 폐강 처리하시겠습니까? (목록에서 숨김)')) {
-                    const result = await handleApiRequest(`/api/forms/${formId}/status`, 'PUT', { status: 'archived' });
-                    if(result.success) { alert(result.data.message); loadAllFormsForAdmin('active', document.getElementById('current-forms-container')); if(calendar) calendar.refetchEvents(); }
-                }
-            }
-        });
-
-        document.getElementById('archived-forms-container').addEventListener('click', async (e) => {
-             if (e.target.classList.contains('restore-btn')) {
-                const formId = e.target.dataset.id;
-                if(confirm('이 수업을 다시 활성화하시겠습니까?')) {
-                    const result = await handleApiRequest(`/api/forms/${formId}/status`, 'PUT', { status: 'active' });
+                if(confirm('이 수업을 영구적으로 삭제하시겠습니까? 관련된 제출 기록은 삭제되지 않습니다.')) {
+                    const result = await handleApiRequest(`/api/forms/${formId}`, 'DELETE');
                     if(result.success) { 
                         alert(result.data.message); 
-                        loadAllFormsForAdmin('active', document.getElementById('current-forms-container'));
-                        loadAllFormsForAdmin('archived', document.getElementById('archived-forms-container'));
+                        loadAllFormsForAdmin();
                         if(calendar) calendar.refetchEvents();
                     }
                 }
             }
-        });
-
-        document.getElementById('toggle-archived-forms').addEventListener('click', function() {
-            const panel = document.getElementById('archived-forms-panel');
-            if(panel.style.display === 'block') { panel.style.display = 'none'; this.textContent = '폐강된 수업 보기'; } 
-            else { panel.style.display = 'block'; this.textContent = '폐강된 수업 숨기기'; loadAllFormsForAdmin('archived', document.getElementById('archived-forms-container')); }
         });
 
         studentDetailsContainer.addEventListener('click', async (e) => {
@@ -468,7 +412,6 @@
         const closeModal = document.querySelector(".modal .close");
         closeModal.onclick = () => { modal.style.display = "none"; };
         window.onclick = (e) => { if (e.target == modal) { modal.style.display = "none"; } };
-        window.onload = loadActiveFormsForAssistant;
     </script>
 </body>
 </html>
